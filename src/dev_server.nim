@@ -69,6 +69,17 @@ type
     snapshot*: ContentSnapshot
     hub*: ReloadHub
     render*: RenderFn
+    assetsDirs*: seq[string]
+      ## On-disk dirs served under `/assets/`, searched in order (first match
+      ## wins). A themed consumer passes the same dirs its build maps into
+      ## `public/assets/` -- e.g. @["assets", "static"] when `style.css` lives
+      ## in `assets/` and the fonts/images in `static/`. Empty = no static
+      ## assets served (pages still render, just unstyled).
+    docsTokensCss*: string
+      ## Optional `:root{ --docs-*: … }` token CSS (from
+      ## `core/docs_tokens.emitTokensCss`) PREPENDED to the served
+      ## `assets/style.css`, exactly as `buildSite(docsTokensCss = …)` does --
+      ## so the dev server's theme matches the built site's byte-for-byte.
 
 # ---------------------------------------------------------------------------
 # Reload hub — the transport-agnostic fan-out the watcher feeds and the WS
@@ -191,17 +202,61 @@ proc defaultRender(contentDir: string; cfg: DocsConfig): RenderFn =
 
 proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
                     liveReloadPath = defaultLiveReloadPath;
-                    render: RenderFn = nil): DevServer =
+                    render: RenderFn = nil;
+                    assetsDirs: seq[string] = @[]; docsTokensCss = ""): DevServer =
   ## Constructs a dev server over `contentDir`, taking the initial content
   ## snapshot up front so the first `pollForChanges` reports only genuine
-  ## edits made after startup.
+  ## edits made after startup. `assetsDirs`/`docsTokensCss` (both optional) make
+  ## the server serve the consumer's own themed asset dirs under `/assets/` with
+  ## the token CSS prepended to `style.css`, so live reload shows the real look.
   result = DevServer(
     contentDir: contentDir,
     cfg: cfg,
     liveReloadPath: liveReloadPath,
     hub: newReloadHub(),
-    snapshot: snapshotContentDir(contentDir))
+    snapshot: snapshotContentDir(contentDir),
+    assetsDirs: assetsDirs,
+    docsTokensCss: docsTokensCss)
   result.render = if render != nil: render else: defaultRender(contentDir, cfg)
+
+proc mimeForAsset*(path: string): string =
+  ## Minimal content-type map for the asset kinds a docs site ships. Unknown
+  ## extensions fall back to a generic binary type.
+  let ext = path.splitFile.ext.toLowerAscii
+  case ext
+  of ".css": "text/css; charset=utf-8"
+  of ".js": "text/javascript; charset=utf-8"
+  of ".json": "application/json; charset=utf-8"
+  of ".svg": "image/svg+xml"
+  of ".woff2": "font/woff2"
+  of ".woff": "font/woff"
+  of ".ttf": "font/ttf"
+  of ".png": "image/png"
+  of ".jpg", ".jpeg": "image/jpeg"
+  of ".gif": "image/gif"
+  of ".ico": "image/x-icon"
+  of ".webp": "image/webp"
+  else: "application/octet-stream"
+
+proc handleAsset*(server: DevServer; path: string):
+    tuple[status: int; contentType, body: string] =
+  ## Serves a request under `/assets/` from `server.assetsDir`. For
+  ## `assets/style.css` the server's `docsTokensCss` is prepended, mirroring
+  ## `buildSite(docsTokensCss = …)` so the dev look matches the built site.
+  ## A path-escape attempt (`..`), no configured dirs, or a file missing from
+  ## every dir all yield 404 (never a filesystem read outside the assets dirs).
+  const prefix = "/assets/"
+  let rel = path[prefix.len .. ^1]
+  if rel.len == 0 or ".." in rel:
+    return (404, "text/plain; charset=utf-8", "not found")
+  for dir in server.assetsDirs:
+    let full = dir / rel
+    if fileExists(full):
+      var body = readFile(full)
+      if rel == "style.css" and server.docsTokensCss.len > 0:
+        body = server.docsTokensCss & "\n" & body
+      return (200, mimeForAsset(rel), body)
+  (404, "text/plain; charset=utf-8", "not found")
 
 proc handleRoute*(server: DevServer; path: string):
     tuple[status: int; contentType, body: string] =
@@ -213,6 +268,10 @@ proc handleRoute*(server: DevServer; path: string):
   if path == server.liveReloadPath:
     # Non-WS hit on the reload endpoint (e.g. a probe): a plain OK.
     return (200, "text/plain; charset=utf-8", "isonim-docs live-reload endpoint")
+  if path.startsWith("/assets/"):
+    # Static assets (themed stylesheet, fonts, images) served verbatim; never
+    # get the live-reload client injected.
+    return handleAsset(server, path)
   try:
     let (status, html) = server.render(path)
     (status, "text/html; charset=utf-8", injectLiveReload(html, server.liveReloadPath))

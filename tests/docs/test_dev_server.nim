@@ -181,3 +181,43 @@ suite "docs dev server -- real DevServer over hermetic fixtures (M11 deliverable
       check body.contains(defaultLiveReloadPath)
       client.close()
       http.close()
+
+  test "serves themed /assets across dirs (style.css in assets/, font in static/), token CSS prepended":
+    withFixtureDir:
+      writeMiniSite(fixtureDir)
+      # Mirrors the real consumer layout: style.css in assets/, fonts in static/.
+      let assetsDir = fixtureDir / "_assets"
+      let staticDir = fixtureDir / "_static"
+      createDir(assetsDir)
+      createDir(staticDir / "fonts")
+      writeFile(assetsDir / "style.css", ".docs-body{color:#111}")
+      writeFile(staticDir / "fonts" / "Geist.woff2", "WOFF2BYTES")
+      let tokensCss = ":root{--docs-accent:#4168cc}"
+      let ds = newDevServer(fixtureDir, assetsDirs = @[assetsDir, staticDir],
+                            docsTokensCss = tokensCss)
+
+      # style.css: 200, text/css, token CSS prepended BEFORE the base rules.
+      let (st, ct, css) = handleRoute(ds, "/assets/style.css")
+      check st == 200
+      check ct == "text/css; charset=utf-8"
+      check css.startsWith(tokensCss)
+      check css.contains(".docs-body{color:#111}")
+      # the live-reload client is never injected into an asset
+      check not css.contains(defaultLiveReloadPath)
+
+      # a font resolves with the right MIME
+      let (fst, fct, fbody) = handleRoute(ds, "/assets/fonts/Geist.woff2")
+      check fst == 200
+      check fct == "font/woff2"
+      check fbody == "WOFF2BYTES"
+
+      # missing asset -> 404; path escape -> 404 (never reads outside assetsDir)
+      check handleRoute(ds, "/assets/nope.css").status == 404
+      check handleRoute(ds, "/assets/../secret").status == 404
+
+  test "with no assetsDir configured, /assets requests 404 (pages still render)":
+    withFixtureDir:
+      writeMiniSite(fixtureDir)
+      let ds = newDevServer(fixtureDir)               # no assetsDir
+      check handleRoute(ds, "/assets/style.css").status == 404
+      check handleRoute(ds, "/").status == 200        # routes unaffected

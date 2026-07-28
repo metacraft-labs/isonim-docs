@@ -10,9 +10,31 @@ test:
     nim c -r tests/test_feature_coverage.nim
     nim c -r tests/test_doc_links_resolve.nim
     nim c -r tests/test_doc_examples_compile.nim
+    nim c -r tests/test_dev.nim
 
 build:
     nim c -r --hints:off -o:build/build src/build.nim
 
+# Live-reloading dev server: serves content/ + themed assets and hot-reloads
+# every open tab on any content edit. Run this, then `just open` in another shell.
+dev port='8000':
+    nim c -r --hints:off src/dev.nim {{port}}
+
+# Open the running dev server in a browser (Linux xdg-open / macOS open).
+open port='8000':
+    @xdg-open http://localhost:{{port}}/ 2>/dev/null || open http://localhost:{{port}}/ 2>/dev/null || echo "open http://localhost:{{port}}/ manually"
+
+# One-shot SSR preview (no live reload).
 serve:
     nim c -r --hints:off src/ssr.nim
+
+# Launch the live design-system editor: an isonim editor instance over the
+# Metacraft DTCG docs tokens (design/). Builds the client-side editor JS (the
+# token set is staticRead-embedded, so it runs straight from index.html) and
+# opens it. The editor loads the brand/alias/mapped tokens + previews real docs
+# components live; persisting an edit back to codetracer-design-system/*.json is
+# the C-target writeback (design/dtcg_writeback). Needs the isonim editor's extra
+# sibling checkouts (see design/config.nims).
+design:
+    nim js --hints:off -o:design/build/design_editor.js design/main.nim
+    @xdg-open design/index.html 2>/dev/null || open design/index.html 2>/dev/null || echo "open $(pwd)/design/index.html in a browser"
