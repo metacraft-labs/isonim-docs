@@ -1,0 +1,70 @@
+name: Deploy docs
+
+# Publish the isonim-docs self-documentation site (site/) to GitHub Pages on
+# every push to main. Independent of the CI test workflow: docs are content and
+# must publish regardless of unrelated test status. GitHub Pages must be enabled
+# for this repo with the source set to the `gh-pages` branch (Settings -> Pages).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Only one deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy-docs:
+    runs-on: eph-linux-x64
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write # push the built site to the gh-pages branch
+    steps:
+      # site/ builds against sibling source checkouts via config.nims's `--path`
+      # switches (isonim + its vendored deps, nim-everywhere, nim-faststreams,
+      # nim-stew), laid out at the workspace root -- exactly the layout the
+      # isonim-docs CI test job uses. The toolchain comes from the isonim flake.
+      - name: Check out isonim-docs
+        uses: actions/checkout@v4
+        with:
+          path: isonim-docs
+
+      - name: Check out isonim (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: metacraft-labs/isonim
+          path: isonim
+
+      - name: Check out nim-everywhere (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: metacraft-labs/nim-everywhere
+          path: nim-everywhere
+
+      - name: Check out nim-faststreams (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: metacraft-labs/nim-faststreams
+          path: nim-faststreams
+
+      - name: Check out nim-stew (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: metacraft-labs/nim-stew
+          path: nim-stew
+
+      - name: Setup Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+          nix-github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ci/deploy/docs.sh builds site/ under the isonim dev shell and force-pushes
+      # site/public/ to the gh-pages orphan branch (origin = this repo; the
+      # default GITHUB_TOKEN with contents:write authorizes the same-repo push).
+      - name: Build + deploy self-docs to gh-pages
+        working-directory: isonim-docs
+        run: ./ci/deploy/docs.sh

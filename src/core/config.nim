@@ -82,6 +82,16 @@ type
                      ## case canonical/og URLs fall back to root-relative
                      ## route paths rather than being fabricated against a
                      ## hardcoded host.
+    basePath*: string ## OPTIONAL URL prefix for project-subpath hosting (e.g.
+                     ## `/isonim-docs` when served at
+                     ## `https://<org>.github.io/isonim-docs/`). Empty (the
+                     ## framework default) = root hosting, byte-identical output.
+                     ## When set, `buildSite` prefixes every internal
+                     ## root-relative URL it emits (page href/src/search-index
+                     ## attr, stylesheet `url(...)`, search-index routePaths) so
+                     ## the published site resolves under the subpath. Set
+                     ## `baseUrl` to include the same subpath so canonical/
+                     ## sitemap URLs stay correct. See `core/base_path`.
     search*: ServerSearchConfig ## M12 deliverable 2's addition: the
                      ## client-index-vs-server-API search toggle. Defaults
                      ## (via `docsConfig()`) to `defaultServerSearchConfig()`

@@ -19,6 +19,7 @@ import ./core/plugin
 import ./core/search_vm
 import ./components/search_view
 import ./core/asset_pipeline
+import ./core/base_path
 
 const bundledDefaultStylesheet = staticRead("../assets/style.css")
   ## The framework's own content-agnostic, token-driven stylesheet,
@@ -35,7 +36,8 @@ proc outputPathFor(outDir, routePath: string): string =
   if trimmed.len == 0: outDir / "index.html"
   else: outDir / trimmed / "index.html"
 
-proc copyAssetsVerbatim(outDir, assetsDir: string; docsTokensCss = "") =
+proc copyAssetsVerbatim(outDir, assetsDir: string; docsTokensCss = "";
+                        basePath = "") =
   ## Verbatim-copies `assetsDir` (the framework's or a consumer's own
   ## `assets/`, holding at minimum `style.css`) into `outDir/assets/`.
   ## If no non-empty `style.css` lands (the site ships no `assets/` dir,
@@ -76,6 +78,15 @@ proc copyAssetsVerbatim(outDir, assetsDir: string; docsTokensCss = "") =
   if docsTokensCss.len > 0:
     writeFile(cssPath, docsTokensCss & "\n" & readFile(cssPath))
     info "ssg_docs_tokens_prepended", path = cssPath, bytes = docsTokensCss.len
+  ## Base-path prefixing for project-subpath hosting (empty = no-op, byte-
+  ## identical). Rewrite every root-relative `url(...)` in the emitted CSS
+  ## BEFORE `hashAndPurgeAssets` runs, so the content hash reflects the final
+  ## bytes. Applies to every `*.css` the site actually ships under `assets/`.
+  let base = normalizeBasePath(basePath)
+  if base.len > 0 and dirExists(outDir / "assets"):
+    for cssFile in walkDirRec(outDir / "assets"):
+      if cssFile.toLowerAscii.endsWith(".css"):
+        writeFile(cssFile, applyBasePathCss(readFile(cssFile), base))
 
 proc hashAndPurgeAssets(outDir: string, usedClasses: HashSet[string]):
     seq[tuple[fromHref, toHref: string]] =
@@ -187,9 +198,14 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   var cfg = cfg
   applyOnConfig(host, cfg)
 
+  ## Base-path prefix for project-subpath hosting (empty = root hosting, output
+  ## byte-identical to before). Resolved once, after `onConfig`, so every
+  ## artifact (CSS, search index, page HTML) is prefixed consistently.
+  let base = normalizeBasePath(cfg.basePath)
+
   removeDir(outDir)
   createDir(outDir)
-  copyAssetsVerbatim(outDir, assetsDir, docsTokensCss)
+  copyAssetsVerbatim(outDir, assetsDir, docsTokensCss, cfg.basePath)
   if dirExists(publicDir):
     copyDir(publicDir, outDir)
 
@@ -224,7 +240,8 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   ## exactly the same content-hash + href-rewrite pipeline the stylesheet
   ## already goes through above. The overlay then fetches this lazily on
   ## first open (see `main_web.wireSearchOverlay`).
-  let searchIndexJson = searchIndexToJson(buildRealSearchIndex(contentDir, manifest))
+  let searchIndexJson = applyBasePathSearchIndex(
+    searchIndexToJson(buildRealSearchIndex(contentDir, manifest)), base)
   let searchIndexHashedName = "search-index." & contentHash(searchIndexJson) & ".json"
   writeFile(outDir / searchIndexHashedName, searchIndexJson)
   hrefRewrites.add (defaultSearchIndexUrl, "/" & searchIndexHashedName)
@@ -239,6 +256,9 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
     var finalHtml = html
     for (fromHref, toHref) in hrefRewrites:
       finalHtml = finalHtml.replace(fromHref, toHref)
+    ## Base-path prefix LAST, so the placeholder->hashed `href`/`src`/search-index
+    ## URLs above are prefixed too (empty base = no-op, byte-identical).
+    finalHtml = applyBasePathHtml(finalHtml, base)
     createDir(outPath.parentDir)
     writeFile(outPath, finalHtml)
     inc count

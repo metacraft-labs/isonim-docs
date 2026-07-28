@@ -11,6 +11,7 @@
 import std/[unittest, os, strutils]
 import core/routes
 import core/content
+import core/base_path      ## normalizeBasePath (project-subpath hosting)
 import build_site          ## the framework's real on-disk SSG entry
 import ../src/ssr
 import ../src/docs_config  ## this site's own DocsConfig (isonimDocsDocsConfig)
@@ -79,7 +80,17 @@ suite "isonim-docs self-docs -- real on-disk buildSite() emits a non-dangling pu
     ## non-empty -- i.e. `stylesheetHref` is NOT dangling. The declared
     ## href is `/assets/style.css`; the build's hash+purge pipeline
     ## rewrites it to a content-hashed name.
-    let cssHref = extractStylesheetHref(indexHtml)
+    ## This site is served under a GitHub project-Pages subpath, so the SSG
+    ## prefixes the href with the config's `basePath` (e.g. /isonim-docs). Verify
+    ## the prefix IS present (a stronger check than before), then strip it to
+    ## resolve the on-disk file -- `public/` is served AT the basePath, so the
+    ## bytes live at `public/assets/...`. With basePath empty (root hosting) the
+    ## strip is a no-op and the original assertions hold unchanged.
+    let base = normalizeBasePath(isonimDocsDocsConfig().basePath)
+    var cssHref = extractStylesheetHref(indexHtml)
+    if base.len > 0:
+      check cssHref.startsWith(base & "/assets/style.")
+      cssHref = cssHref[base.len .. ^1]
     check cssHref.startsWith("/assets/style.")
     check cssHref.endsWith(".css")
     check cssHref != "/assets/style.css" # proves the hash/purge pipeline ran

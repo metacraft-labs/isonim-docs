@@ -18,7 +18,13 @@ proc isonimDocsDocsConfig*(): DocsConfig =
     siteDescription: "Documentation for isonim-docs -- the Nim documentation-site framework built on IsoNim.",
     defaultRoute: "/",
     stylesheetHref: "/assets/style.css",
-    baseUrl: "https://isonim-docs.dev",
+    # Published to GitHub project Pages (metacraft-labs.github.io/isonim-docs), so
+    # the site is served under the `/isonim-docs` subpath: `baseUrl` carries it for
+    # absolute canonical/sitemap URLs and `basePath` prefixes every internal
+    # root-relative URL the SSG emits (see `core/base_path`). Switch both to a
+    # custom domain (e.g. isonim-docs.dev, basePath "") once DNS is ready.
+    baseUrl: "https://metacraft-labs.github.io/isonim-docs",
+    basePath: "/isonim-docs",
     # No `siteLogo`/`logoHref`: the framework's own docs ship no logo, so the
     # header is the plain `.docs-title` text ("isonim-docs"). `footerHtml`
     # fills the `.docs-footer` with the framework's own attribution line.
