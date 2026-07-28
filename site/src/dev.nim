@@ -26,9 +26,11 @@ proc newDocsDevServer*(contentDir = "content";
   ## This site's themed live-reload dev server (own content/config/tokens over
   ## its assets/ + static/ dirs). Exposed so a test drives the exact `just dev-docs`
   ## wiring without binding a socket.
-  let tokensCss = emitTokensCss(isonimDocsTokenLayer(), designSystemTokens())
   newDevServer(contentDir = contentDir, cfg = isonimDocsDocsConfig(),
-               assetsDirs = assetsDirs, docsTokensCss = tokensCss)
+               assetsDirs = assetsDirs,
+               docsTokensCss = docsTokensCssLive(),
+               tokensCssProvider = (proc(): string = docsTokensCssLive()),
+               watchPaths = @[docsDesignSystemPath])
 
 when isMainModule:
   let port = if paramCount() >= 1: parseInt(paramStr(1)) else: 8000

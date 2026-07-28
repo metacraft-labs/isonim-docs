@@ -80,6 +80,15 @@ type
       ## `core/docs_tokens.emitTokensCss`) PREPENDED to the served
       ## `assets/style.css`, exactly as `buildSite(docsTokensCss = …)` does --
       ## so the dev server's theme matches the built site's byte-for-byte.
+    tokensCssProvider*: proc(): string {.closure.}
+      ## Optional live re-computation of `docsTokensCss`. When set, the served
+      ## `assets/style.css` prepends `tokensCssProvider()` (re-read fresh on
+      ## every request) instead of the static `docsTokensCss` -- so editing the
+      ## design-system token file hot-reloads the theme without a rebuild.
+    watchPaths*: seq[string]
+      ## Extra individual files to watch alongside `contentDir` (e.g. the shared
+      ## design-system token JSON). A change to any of them triggers a reload,
+      ## exactly like a content edit.
 
 # ---------------------------------------------------------------------------
 # Reload hub — the transport-agnostic fan-out the watcher feeds and the WS
@@ -139,6 +148,16 @@ proc diffSnapshots*(prev, cur: ContentSnapshot): seq[string] =
     if k notin cur:
       result.add k
   result.sort()
+
+proc snapshotWatchPaths*(paths: seq[string]): ContentSnapshot =
+  ## Content-hashes each individually-watched file (e.g. the design-system token
+  ## JSON), keyed by a `watch:`-prefixed path so it can never collide with a
+  ## `contentDir`-relative key. Missing files are simply absent (their later
+  ## appearance shows up as an add).
+  result = initTable[string, string]()
+  for p in paths:
+    if fileExists(p):
+      result["watch:" & p] = $secureHash(readFile(p))
 
 # ---------------------------------------------------------------------------
 # Live-reload client + error overlay — the injected browser bytes.
@@ -203,20 +222,31 @@ proc defaultRender(contentDir: string; cfg: DocsConfig): RenderFn =
 proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
                     liveReloadPath = defaultLiveReloadPath;
                     render: RenderFn = nil;
-                    assetsDirs: seq[string] = @[]; docsTokensCss = ""): DevServer =
-  ## Constructs a dev server over `contentDir`, taking the initial content
-  ## snapshot up front so the first `pollForChanges` reports only genuine
-  ## edits made after startup. `assetsDirs`/`docsTokensCss` (both optional) make
-  ## the server serve the consumer's own themed asset dirs under `/assets/` with
-  ## the token CSS prepended to `style.css`, so live reload shows the real look.
+                    assetsDirs: seq[string] = @[]; docsTokensCss = "";
+                    tokensCssProvider: proc(): string {.closure.} = nil;
+                    watchPaths: seq[string] = @[]): DevServer =
+  ## Constructs a dev server over `contentDir`, taking the initial snapshot up
+  ## front so the first `pollForChanges` reports only genuine edits made after
+  ## startup. `assetsDirs`/`docsTokensCss` (both optional) make the server serve
+  ## the consumer's own themed asset dirs under `/assets/` with the token CSS
+  ## prepended to `style.css`. `tokensCssProvider`/`watchPaths` (both optional)
+  ## enable design-token HOT RELOAD: the token CSS is re-computed live on every
+  ## request and a change to any `watchPaths` file (e.g. the design-system token
+  ## JSON) triggers a reload -- so editing the design system updates the running
+  ## site with no rebuild.
   result = DevServer(
     contentDir: contentDir,
     cfg: cfg,
     liveReloadPath: liveReloadPath,
     hub: newReloadHub(),
-    snapshot: snapshotContentDir(contentDir),
     assetsDirs: assetsDirs,
-    docsTokensCss: docsTokensCss)
+    docsTokensCss: docsTokensCss,
+    tokensCssProvider: tokensCssProvider,
+    watchPaths: watchPaths)
+  # Initial snapshot covers content + the watched files.
+  result.snapshot = snapshotContentDir(contentDir)
+  for k, v in snapshotWatchPaths(watchPaths):
+    result.snapshot[k] = v
   result.render = if render != nil: render else: defaultRender(contentDir, cfg)
 
 proc mimeForAsset*(path: string): string =
@@ -253,8 +283,14 @@ proc handleAsset*(server: DevServer; path: string):
     let full = dir / rel
     if fileExists(full):
       var body = readFile(full)
-      if rel == "style.css" and server.docsTokensCss.len > 0:
-        body = server.docsTokensCss & "\n" & body
+      if rel == "style.css":
+        # Prefer the live provider (re-read fresh, so design-system edits show
+        # immediately) over the static snapshot captured at startup.
+        let tokens =
+          if server.tokensCssProvider != nil: server.tokensCssProvider()
+          else: server.docsTokensCss
+        if tokens.len > 0:
+          body = tokens & "\n" & body
       return (200, mimeForAsset(rel), body)
   (404, "text/plain; charset=utf-8", "not found")
 
@@ -281,12 +317,15 @@ proc handleRoute*(server: DevServer; path: string):
       renderErrorOverlay(path, e.msg, server.liveReloadPath))
 
 proc pollForChanges*(server: DevServer): seq[string] =
-  ## The watcher tick: re-snapshot the content dir, diff against the last
-  ## snapshot, and — if anything changed — adopt the new snapshot and
-  ## broadcast the reload signal to every connected client. Returns the
-  ## changed relative paths (empty when nothing changed, so it's cheap to
-  ## call on a fast timer).
-  let cur = snapshotContentDir(server.contentDir)
+  ## The watcher tick: re-snapshot the content dir + the watched files, diff
+  ## against the last snapshot, and — if anything changed — adopt the new
+  ## snapshot and broadcast the reload signal to every connected client. Returns
+  ## the changed keys (empty when nothing changed, so it's cheap to call on a
+  ## fast timer). A change to a watched design-system file reloads exactly like
+  ## a content edit; the browser then re-fetches `style.css` with fresh tokens.
+  var cur = snapshotContentDir(server.contentDir)
+  for k, v in snapshotWatchPaths(server.watchPaths):
+    cur[k] = v
   let changed = diffSnapshots(server.snapshot, cur)
   if changed.len > 0:
     server.snapshot = cur

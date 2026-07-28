@@ -221,3 +221,27 @@ suite "docs dev server -- real DevServer over hermetic fixtures (M11 deliverable
       let ds = newDevServer(fixtureDir)               # no assetsDir
       check handleRoute(ds, "/assets/style.css").status == 404
       check handleRoute(ds, "/").status == 200        # routes unaffected
+
+  test "design-token HOT RELOAD: a watched token file change reloads + style.css re-emits live":
+    withFixtureDir:
+      writeMiniSite(fixtureDir)
+      let assetsDir = fixtureDir / "_a"
+      createDir(assetsDir)
+      writeFile(assetsDir / "style.css", ".body{}")
+      # A standalone "design-system token file" + a provider that turns its
+      # current contents into token CSS -- exactly the dev.nim wiring, in the small.
+      let tokenFile = fixtureDir / "tokens.json"
+      writeFile(tokenFile, "v1")
+      let provider = proc(): string = ":root{--docs-x:" & readFile(tokenFile) & "}"
+      let ds = newDevServer(fixtureDir, assetsDirs = @[assetsDir],
+                            tokensCssProvider = provider, watchPaths = @[tokenFile])
+      let q = ds.hub.subscribe()
+
+      # style.css prepends the LIVE provider output (not a startup snapshot)
+      check handleRoute(ds, "/assets/style.css").body.contains("--docs-x:v1")
+      # editing the watched token file triggers a reload, like a content edit
+      writeFile(tokenFile, "v2")
+      check ds.pollForChanges().len == 1
+      check q[] == @[reloadMessage]
+      # and the very next style.css request reflects the NEW tokens -- no restart
+      check handleRoute(ds, "/assets/style.css").body.contains("--docs-x:v2")
