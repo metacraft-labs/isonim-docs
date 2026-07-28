@@ -127,6 +127,15 @@ type
                      ## pre-M3 empty `<footer>`. Emitted VERBATIM (trusted site
                      ## config, not user content); an SSR-string hook, since raw
                      ## HTML has no generic-renderer node representation.
+    sectionOrder*: seq[string]
+                     ## OPTIONAL explicit ordering of the sidebar's TOP-LEVEL
+                     ## sections, by section key (e.g. @["getting_started",
+                     ## "usage_guide", "reference"]). Sections not listed -- and
+                     ## the whole nav when this is empty (the framework default)
+                     ## -- fall back to alphabetical, so existing sites are
+                     ## unchanged. Lets a site match a hand-authored nav order
+                     ## (e.g. the WebFlow docs organization) without renaming
+                     ## dirs or leaking order into URLs.
     headerLinks*: seq[tuple[label, href: string]]
                      ## metacraft-theme-parity M1 (Gap B): OPTIONAL nav buttons
                      ## rendered at the RIGHT of `.docs-header` (WebFlow

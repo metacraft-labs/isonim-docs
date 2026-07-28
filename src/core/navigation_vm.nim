@@ -98,19 +98,36 @@ proc humanizeKey*(key: string): string =
   if key.len == 0: return ""
   var words: seq[string] = @[]
   for segment in key.split('/'):
-    for word in segment.split('-'):
+    for word in segment.split({'-', '_'}):
       if word.len > 0:
         words.add word[0].toUpperAscii & word[1 .. ^1]
   words.join(" ")
 
-proc sortNavPages*(pages: seq[NavPage]): seq[NavPage] =
+proc sectionRank(section: string; sectionOrder: seq[string]): int =
+  ## A section's rank for ordering: the index of its TOP-LEVEL segment in the
+  ## consumer-supplied `sectionOrder`. Sections not listed (and every section
+  ## when `sectionOrder` is empty) rank equal-and-last, so the caller's
+  ## alphabetical tiebreak then applies -- i.e. an empty `sectionOrder`
+  ## preserves the historical alphabetical section order exactly.
+  if sectionOrder.len == 0: return int.high
+  let top = if '/' in section: section.split('/')[0] else: section
+  let idx = sectionOrder.find(top)
+  if idx >= 0: idx else: int.high
+
+proc sortNavPages*(pages: seq[NavPage]; sectionOrder: seq[string] = @[]): seq[NavPage] =
   ## The one stable nav reading order every builder below shares:
-  ## (section, front-matter order, slug) -- exactly `content.nim`'s
-  ## `loadContentEntries` sort, so the sidebar and the prev/next chain
-  ## never disagree on page order.
+  ## (section-rank, section, front-matter order, slug) -- exactly `content.nim`'s
+  ## `loadContentEntries` sort, so the sidebar and the prev/next chain never
+  ## disagree on page order. `sectionOrder` (optional, from `DocsConfig`) puts
+  ## the named sections in that order; unlisted sections and an empty
+  ## `sectionOrder` fall back to alphabetical, unchanged.
   result = pages
   result.sort(proc(a, b: NavPage): int =
-    if a.section != b.section: return cmp(a.section, b.section)
+    if a.section != b.section:
+      let ra = sectionRank(a.section, sectionOrder)
+      let rb = sectionRank(b.section, sectionOrder)
+      if ra != rb: return cmp(ra, rb)
+      return cmp(a.section, b.section)
     if a.order != b.order: return cmp(a.order, b.order)
     cmp(a.slug, b.slug))
 
@@ -160,7 +177,8 @@ proc computeNavExpansion(node: var NavSection; activeRoutePath: string): bool =
   node.isExpanded = hasActive
   hasActive
 
-proc buildSidebar*(pages: seq[NavPage]; activeRoutePath: string): SidebarViewModel =
+proc buildSidebar*(pages: seq[NavPage]; activeRoutePath: string;
+                   sectionOrder: seq[string] = @[]): SidebarViewModel =
   ## Builds the infinite-depth sidebar tree (M5 corrective deliverable
   ## 1): every page's full `section` path (however deeply nested --
   ## "guide", "guide/advanced", "guide/advanced/tips", ...) becomes its
@@ -170,7 +188,7 @@ proc buildSidebar*(pages: seq[NavPage]; activeRoutePath: string): SidebarViewMod
   ## before, so single-level content (no nested dirs at all) renders
   ## byte-for-byte the same shape it always has -- infinite depth is
   ## additive, not a breaking reshape of the shallow case.
-  let sorted = sortNavPages(pages)
+  let sorted = sortNavPages(pages, sectionOrder)
   var root = NavSection(key: "", title: "", isExpanded: true)
   for page in sorted:
     let item = NavItem(routePath: page.routePath, title: page.title,
@@ -235,13 +253,14 @@ proc buildBreadcrumbs*(pages: seq[NavPage]; activeRoutePath: string;
                            routePath: deriveRoutePath(active.section, "index"), isCurrent: false)
   result.add Breadcrumb(title: active.title, routePath: active.routePath, isCurrent: true)
 
-proc buildAdjacentPages*(pages: seq[NavPage]; activeRoutePath: string):
+proc buildAdjacentPages*(pages: seq[NavPage]; activeRoutePath: string;
+                         sectionOrder: seq[string] = @[]):
     tuple[previous, next: AdjacentPage] =
   ## Previous/next within the same sorted reading order the sidebar
   ## uses, flattened across section boundaries. An active route absent
   ## from `pages` (e.g. a 404) yields no adjacent pages in either
   ## direction.
-  let sorted = sortNavPages(pages)
+  let sorted = sortNavPages(pages, sectionOrder)
   var idx = -1
   for i, page in sorted:
     if page.routePath == activeRoutePath:
@@ -258,13 +277,16 @@ proc buildAdjacentPages*(pages: seq[NavPage]; activeRoutePath: string):
   (previous, next)
 
 proc buildNavigationViewModel*(pages: seq[NavPage]; activeRoutePath: string;
-                                toc: seq[HeadingNode] = @[]): NavigationViewModel =
+                                toc: seq[HeadingNode] = @[];
+                                sectionOrder: seq[string] = @[]): NavigationViewModel =
   ## The one entry point later renderers (`components/navigation_view.nim`)
   ## and shell wiring (`ssr.nim`'s `renderRoute`, `main_web.nim`'s
   ## `createRouteApp`) use: every sub-ViewModel above, built off the same
   ## page list and active route so they never disagree with each other.
-  let (previous, next) = buildAdjacentPages(pages, activeRoutePath)
-  NavigationViewModel(sidebar: buildSidebar(pages, activeRoutePath),
+  ## `sectionOrder` (from `DocsConfig.sectionOrder`) orders the top-level
+  ## sections; empty = alphabetical, unchanged.
+  let (previous, next) = buildAdjacentPages(pages, activeRoutePath, sectionOrder)
+  NavigationViewModel(sidebar: buildSidebar(pages, activeRoutePath, sectionOrder),
                        breadcrumbs: buildBreadcrumbs(pages, activeRoutePath),
                        previous: previous, next: next, toc: toc)
 

@@ -176,7 +176,7 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
     ## isn't a real, matched route (404/redirect) highlights nothing.
     let navPages = buildNavPages(effManifest, loadEntry)
     let activePath = if entry.status == rsOk: entry.canonicalPath else: ""
-    buildNavigationViewModel(navPages, activePath)
+    buildNavigationViewModel(navPages, activePath, sectionOrder = cfg.sectionOrder)
 
   proc fallbackHtml(): string =
     ## The HTTP-500 page: normal shell chrome with an error notice in place
@@ -219,7 +219,8 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
                                   makeContentPathResolver(effManifest), resolveSymbol)
       let pageTitle = if contentEntry.page.title.len > 0: contentEntry.page.title else: entry.meta.title
       let navPages = buildNavPages(effManifest, loadEntry)
-      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree)
+      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree,
+                                                sectionOrder = cfg.sectionOrder)
       renderFn = proc(): string =
         htmlOpen & headRegion & "<body>" & bodyChrome &
           renderMarkdownPageHtml(pageTitle, doc.blocks, navigation,
@@ -279,7 +280,8 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
           steps.add newTutorialStep(sid, h.text, "#" & sid)
       let tut = newTutorialViewModel(entry.canonicalPath, pageTitle, steps)
       let navPages = buildNavPages(effManifest, loadEntry)
-      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree)
+      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree,
+                                                sectionOrder = cfg.sectionOrder)
       renderFn = proc(): string =
         htmlOpen & headRegion & "<body>" & bodyChrome &
           renderTutorialPageHtml(pageTitle, tut, doc.blocks, navigation,
