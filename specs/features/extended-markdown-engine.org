@@ -1,0 +1,22 @@
+#+TITLE: Extended Markdown Engine
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P1
+  :complexity: high
+  :depends_on: static-asset-pipeline
+  :END:
+
+A custom Markdown parser extending standard CommonMark with YAML frontmatter, callouts (admonitions), tabbed content interfaces, and syntax-highlighted code blocks with integrated copy-to-clipboard functionality.
+
+* Acceptance Criteria
+
+- [ ] Parses YAML frontmatter at the top of markdown files into structured metadata objects
+- [ ] Renders custom :::info style admonitions into styled callout UI components
+- [ ] Supports <Tabs> component syntax for multi-language code switching in content
+- [ ] Code blocks are syntax-highlighted using an embedded AST tokenizer at build time
+- [ ] Every code block features a functional, accessible 'Copy to Clipboard' button
+- [ ] Automatically generates anchor IDs for all header elements (H1-H6)
+- [ ] Seamlessly falls back to standard HTML generation for unsupported markdown syntax

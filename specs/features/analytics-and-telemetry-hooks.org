@@ -1,0 +1,21 @@
+#+TITLE: Analytics And Telemetry Hooks
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: agent
+  :authoritative_proposal: true
+  :priority: P4
+  :complexity: low
+  :depends_on: routing-and-state
+  :END:
+
+A privacy-conscious integration layer providing simple configuration for embedding popular analytics providers, alongside custom event hooks for tracking documentation usage patterns.
+
+* Acceptance Criteria
+
+- [ ] Configuration supports simple drop-in tracking IDs for Google Analytics, Plausible, or PostHog
+- [ ] Integrates correctly with SPA routing, firing "pageview" events on soft navigation
+- [ ] Provides a programmatic API to track custom events (e.g., "Code Copied", "Search Executed")
+- [ ] Respects user privacy by honoring "Do Not Track" browser headers
+- [ ] Telemetry scripts are loaded asynchronously to prevent render-blocking

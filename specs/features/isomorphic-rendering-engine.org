@@ -1,0 +1,21 @@
+#+TITLE: Isomorphic Rendering Engine
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P1
+  :complexity: very_high
+  :depends_on: routing-and-state
+  :END:
+
+The core infrastructural capability allowing identical IsoNim components to render as static HTML at build time, dynamically on an Nginx server, and hydrate into a reactive SPA in the browser.
+
+* Acceptance Criteria
+
+- [ ] Single component codebase compiles to both a C server binary and an optimized JS client bundle
+- [ ] SSG mode generates entirely static HTML files with no runtime server processing required
+- [ ] SSR mode utilizes nginx-link-function to return dynamic HTML payloads per incoming request
+- [ ] Client bundle successfully attaches event listeners to pre-rendered HTML during the hydration phase
+- [ ] Hydration phase completes without visual layout shifts, DOM replacement, or console mismatch errors
+- [ ] Application seamlessly transitions to SPA client-side routing after initial hydration is complete

@@ -1,0 +1,21 @@
+#+TITLE: Nginx Deployment Adapter
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P1
+  :complexity: high
+  :depends_on: isomorphic-rendering-engine
+  :END:
+
+A specific deployment target that compiles the IsoNim documentation site into a shared object (.so) file compatible with the nginx-link-function module for ultra-high performance bare-metal hosting.
+
+* Acceptance Criteria
+
+- [ ] CLI toolchain command exists to target Nginx module compilation (e.g., build --target=nginx)
+- [ ] Compiler emits a valid .so shared library file implementing the required ngx_link_func_* C ABI
+- [ ] The adapter correctly translates Nginx C-struct request contexts into IsoNim HTTP Request objects
+- [ ] Streams the IsoNim rendering string output directly to the Nginx response buffer memory
+- [ ] Safely manages Nim's ARC/ORC garbage collector within the highly concurrent Nginx multithreaded worker environment
+- [ ] Handles Nginx cycle initiation and exit hooks (ngx_link_func_init_cycle) for resource cleanup

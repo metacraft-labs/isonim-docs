@@ -1,0 +1,22 @@
+#+TITLE: Multi-Page Nested Navigation
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P1
+  :complexity: low
+  :depends_on: routing-and-state
+  :END:
+
+Provides hierarchical, multi-level sidebar navigation parsed from configuration files or directory structures, allowing users to traverse complex document trees with visual indicators for the active page and expandable sub-sections.
+
+* Acceptance Criteria
+
+- [ ] Navigation tree renders infinite depth based on YAML configuration schema
+- [ ] Active page is styled distinctly and its parent nodes are automatically expanded in the tree
+- [ ] Parent nodes can be collapsed/expanded via click without triggering page navigation
+- [ ] Navigation tree expansion state persists across page loads during SPA navigation
+- [ ] Tree collapses into a mobile-friendly hamburger drawer on viewports under 768px
+- [ ] Auto-generates a sensible fallback tree from filesystem directories if config is missing
+- [ ] Supports external links with appropriate external icon and target blank attributes

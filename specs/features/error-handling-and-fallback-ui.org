@@ -1,0 +1,21 @@
+#+TITLE: Error Handling And Fallback Ui
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: agent
+  :authoritative_proposal: true
+  :priority: P2
+  :complexity: low
+  :depends_on: routing-and-state
+  :END:
+
+Provides robust error boundaries at both the component and routing levels, gracefully handling 404s, client-side rendering crashes, and network failures with styled, user-friendly fallback interfaces.
+
+* Acceptance Criteria
+
+- [ ] Accessing a non-existent URL route displays a styled, brand-consistent custom 404 page
+- [ ] The 404 page retains the overarching site navigation and layout, allowing users to recover
+- [ ] Component-level runtime crashes (e.g., in embedded Live Components) do not crash the entire SPA
+- [ ] Crashed components display a localized, inline "Error rendering component" fallback UI
+- [ ] SSR errors return a proper 500 HTTP status code alongside a fallback HTML page

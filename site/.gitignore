@@ -1,0 +1,19 @@
+# Nim / nimble
+nimcache/
+nimblecache/
+*.exe
+build/
+public/
+.nimble/
+
+# `nim c -r` writes an extensionless native binary next to the source.
+tests/test_site_builds
+tests/test_doc_examples_compile
+tests/test_feature_coverage
+tests/test_doc_links_resolve
+src/build
+src/ssr
+
+# `nim js` writes its output next to the compiled .nim file unless -o: is given.
+src/**/*.js
+tests/**/*.js

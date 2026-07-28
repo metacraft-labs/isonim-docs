@@ -1,0 +1,18 @@
+# isonim-docs/site -- task entry points for the framework's own docs site
+# (mirrors ../../isonim/docs/users/Justfile's style).
+#
+# Every recipe assumes the IsoNim dev shell is active. From a clean
+# checkout:
+#   nix develop ../../isonim -c just --justfile site/Justfile --working-directory site build
+
+test:
+    nim c -r tests/test_site_builds.nim
+    nim c -r tests/test_feature_coverage.nim
+    nim c -r tests/test_doc_links_resolve.nim
+    nim c -r tests/test_doc_examples_compile.nim
+
+build:
+    nim c -r --hints:off -o:build/build src/build.nim
+
+serve:
+    nim c -r --hints:off src/ssr.nim

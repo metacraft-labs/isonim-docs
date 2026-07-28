@@ -1,0 +1,22 @@
+#+TITLE: Client-Side Search Engine
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P1
+  :complexity: high
+  :depends_on: static-asset-pipeline
+  :END:
+
+A fully functional, privacy-respecting client-side full-text search experience featuring a prebuilt JSON inverted index, instant keystroke results, keyboard navigation, and text highlighting.
+
+* Acceptance Criteria
+
+- [ ] Build process generates a highly compressed JSON inverted index of all documentation content
+- [ ] Search UI is triggered instantly via keyboard shortcut (e.g., Cmd+K or /) or click
+- [ ] Results update within 50ms of keystroke entirely via client-side JavaScript processing
+- [ ] Search modal supports full keyboard navigation (up/down arrows, Enter, Esc to close)
+- [ ] Matching search terms are visually highlighted within the preview result snippets
+- [ ] Index fetching is deferred until the first user interaction to minimize initial JS bundle size
+- [ ] Search scoring utilizes TF-IDF or BM25 to prioritize exact title matches over body matches

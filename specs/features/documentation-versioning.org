@@ -1,0 +1,21 @@
+#+TITLE: Documentation Versioning
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P2
+  :complexity: high
+  :depends_on: routing-and-state static-asset-pipeline
+  :END:
+
+Maintains and serves multiple historical versions of the documentation concurrently, providing a dropdown selector for users to switch versions and displaying warning banners when viewing outdated content.
+
+* Acceptance Criteria
+
+- [ ] Global UI provides a persistent dropdown menu to switch between major/minor versions
+- [ ] URL structure strictly reflects versioning (e.g., /docs/v1.2/architecture)
+- [ ] Visiting an older version displays a visible "outdated version" warning banner at the top
+- [ ] The warning banner contains a direct, computed link to the equivalent page in the latest version
+- [ ] Build system isolates version assets to prevent CSS or JavaScript cross-contamination
+- [ ] Search index partitions results by version to prevent cross-version pollution

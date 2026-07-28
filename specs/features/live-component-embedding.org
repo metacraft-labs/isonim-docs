@@ -1,0 +1,21 @@
+#+TITLE: Live Component Embedding
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P1
+  :complexity: very_high
+  :depends_on: isomorphic-rendering-engine extended-markdown-engine
+  :END:
+
+Enables the direct embedding of executable, interactive IsoNim components within Markdown files, allowing developers to construct living documentation with functional UI previews and interactive data visualizers.
+
+* Acceptance Criteria
+
+- [ ] Markdown parser recognizes and extracts custom component tags (e.g., <MyButton>)
+- [ ] Component props are parsed from markdown attributes and passed to the component instance
+- [ ] Components render statically as HTML during the SSG/SSR phase to ensure zero layout shift
+- [ ] Components hydrate correctly on the client, becoming fully interactive without page reloads
+- [ ] Multiple embedded components on a single page maintain strictly isolated reactive states
+- [ ] Missing, unregistered, or crashing components are caught by an inline error boundary

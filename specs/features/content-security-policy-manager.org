@@ -1,0 +1,21 @@
+#+TITLE: Content Security Policy Manager
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: agent
+  :authoritative_proposal: true
+  :priority: P3
+  :complexity: low
+  :depends_on: seo-metadata-generation
+  :END:
+
+An automated system to generate and inject strict Content Security Policy (CSP) headers or meta tags, mitigating Cross-Site Scripting (XSS) risks inherent to embedding interactive components.
+
+* Acceptance Criteria
+
+- [ ] Generates a secure baseline CSP allowing only same-origin scripts and assets
+- [ ] Developers can easily extend the CSP configuration via the isonim.yaml file
+- [ ] Automatically computes and applies SHA-256 hashes for any inline scripts used by the framework
+- [ ] If running in Nginx SSR mode, injects the CSP as an HTTP header rather than a meta tag
+- [ ] Violations can be optionally configured to report to a designated endpoint URL

@@ -1,0 +1,8 @@
+# Compiled harness bundle + test artifacts (nim js / nim c -r outputs).
+build/
+nimcache/
+tests/*.js
+tests/build_*
+tests/test_dtcg_to_workspace
+tests/test_dtcg_writeback_roundtrip
+tests/test_editor_mount_and_preview

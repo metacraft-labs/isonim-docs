@@ -1,0 +1,22 @@
+#+TITLE: Static Asset Pipeline
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: agent
+  :authoritative_proposal: true
+  :priority: P1
+  :complexity: medium
+  :depends_on: cli-toolchain
+  :END:
+
+An automated processing pipeline that handles the bundling, minification, optimization, and cache-busting of all static assets including CSS, JavaScript, images, and fonts required by the site.
+
+* Acceptance Criteria
+
+- [ ] Compiles, purges unused classes, and minifies Tailwind CSS and custom stylesheets
+- [ ] Bundles and minifies all client-side Nim-to-JS compilation artifacts into unified modules
+- [ ] Appends cryptographic content hashes to filenames for cache-busting (e.g., app.f8a92.js)
+- [ ] Optimizes standard image formats (PNG, JPEG) and generates modern WebP alternatives
+- [ ] Copies static files from a designated public/ directory verbatim into the final build output root
+- [ ] Emits a manifest JSON file mapping original asset names to their hashed output filenames

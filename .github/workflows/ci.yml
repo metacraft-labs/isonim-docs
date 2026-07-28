@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Mirrors ../isonim/.github/workflows/ci.yml: the toolchain (Nim,
+        # nimble, just) comes entirely from the isonim flake's dev shell,
+        # so we matrix only over runner class, not Nim version.
+        runner: [eph-linux-x64, eph-linux-arm64, eph-macos-arm64]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # isonim-docs has no flake of its own -- `.envrc` does
+      # `use flake ../isonim` -- and builds directly against sibling
+      # source checkouts via config.nims's `--path` switches (isonim,
+      # nim-everywhere, nim-faststreams, plus isonim's own vendored
+      # chronicles/serialization/json_serialization). CI therefore checks
+      # out isonim-docs and every sibling repo those switches touch into
+      # one shared workspace directory, each at its own `path:`, so the
+      # `../isonim`-relative layout config.nims expects exists on the
+      # runner exactly like it does in local development.
+      #
+      # This is a pragmatic, structurally-sound setup for a repo with no
+      # GitHub remote yet and no prior cross-repo CI precedent of its own
+      # (neither ../isonim nor ../isonim-website checks out siblings in
+      # CI today). If/when isonim-docs joins the monorepo family's
+      # workspace-lock cross-repo CI (see
+      # codetracer-specs/Testing/Cross-Repo-CI-Integration.md), sibling
+      # revisions should move to that pinned-lock resolution mechanism
+      # instead of each checkout step's default ref.
+      - name: Check out isonim-docs
+        uses: actions/checkout@v4
+        with:
+          path: isonim-docs
+
+      - name: Check out isonim (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: metacraft-labs/isonim
+          path: isonim
+
+      - name: Check out nim-everywhere (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: metacraft-labs/nim-everywhere
+          path: nim-everywhere
+
+      - name: Check out nim-faststreams (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: metacraft-labs/nim-faststreams
+          path: nim-faststreams
+
+      - name: Setup Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+          nix-github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The single entry point a clean checkout uses: the full
+      # dual-target docs test matrix plus the compile smoke (see
+      # isonim-docs/Justfile's `ci-docs` recipe).
+      - name: Run isonim-docs CI
+        working-directory: isonim-docs
+        run: nix develop ../isonim -c just ci-docs

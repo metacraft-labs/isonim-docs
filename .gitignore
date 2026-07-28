@@ -1,0 +1,92 @@
+# Nim / nimble
+nimcache/
+nimblecache/
+*.exe
+build/
+dist/
+public/
+.nimble/
+
+src/check_links
+
+# `nim c -r` writes an extensionless native binary next to the source
+# (mirrors ../isonim/.gitignore's per-test-binary listing).
+tests/docs/test_bootstrap_vm
+tests/docs/test_bootstrap_mock
+tests/docs/test_bootstrap_renderroute
+tests/docs/test_bootstrap_browser_mount
+tests/docs/test_routes_vm
+tests/docs/test_routes_mock
+tests/docs/test_routes_renderroute
+tests/docs/test_routes_logging
+tests/docs/test_content_loader
+tests/docs/test_manifest_from_content
+tests/docs/test_manifest_from_content_renderroute
+tests/docs/test_autoroute_renderroute
+tests/docs/test_markdown_vm
+tests/docs/test_markdown_anchor_ids
+tests/docs/test_markdown_mock
+tests/docs/test_markdown_tabs
+tests/docs/test_markdown_renderroute
+tests/docs/test_openapi_ingest
+tests/docs/test_api_reference_renderroute
+tests/docs/test_nimdoc_parse
+tests/docs/test_symbol_reference_renderroute
+tests/docs/test_navigation_vm
+tests/docs/test_navigation_mock
+tests/docs/test_navigation_renderroute
+tests/docs/test_references_vm
+tests/docs/test_references_renderroute
+tests/docs/test_redirects_vm
+tests/docs/test_redirects_renderroute
+tests/docs/test_docs_graph_integration
+tests/docs/test_docs_graph_integration_renderroute
+tests/docs/test_authoring_fixtures
+tests/docs/test_authoring_fixtures_renderroute
+tests/docs/test_search_vm
+tests/docs/test_search_mock
+tests/docs/test_search_browser_mount
+tests/docs/test_search_renderroute
+tests/docs/test_search_index_artifact
+tests/docs/test_theme_vm
+tests/docs/test_theme_mock
+tests/docs/test_asset_pipeline
+tests/docs/test_completeness_vm
+tests/docs/test_framework_is_content_agnostic
+tests/docs/test_syntax_highlight
+tests/docs/test_code_copy_mock
+tests/docs/test_router_vm
+tests/docs/test_nav_tree_deep
+tests/docs/test_seo_head
+tests/docs/test_component_error_boundary
+tests/docs/test_component_extract
+tests/docs/test_error_fallback_renderroute
+tests/docs/test_tutorial_vm
+tests/docs/test_versioning_routes
+tests/docs/test_versioning_renderroute
+tests/docs/test_i18n
+tests/docs/test_i18n_renderroute
+
+# `nim js` writes its output next to the compiled .nim file unless -o:
+# is given (e.g. `nim js -r tests/docs/foo.nim` -> tests/docs/foo.js).
+src/**/*.js
+tests/**/*.js
+
+# Node / tailwind
+node_modules/
+.yarn/
+
+# direnv / nix
+.direnv/
+.env
+
+# editor / OS
+*.swp
+.DS_Store
+
+# agent-harbor workflow artifacts kept in-tree intentionally:
+# specs/features/, *.milestones.org  -> NOT ignored
+
+# agent-orchestration artifacts (not part of the framework)
+.ah/
+*.milestones.org

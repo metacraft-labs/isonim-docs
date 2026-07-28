@@ -1,0 +1,21 @@
+#+TITLE: Development Server And Hmr
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: agent
+  :authoritative_proposal: true
+  :priority: P2
+  :complexity: high
+  :depends_on: cli-toolchain
+  :END:
+
+A high-performance local HTTP server designed for content authoring, providing Hot Module Replacement (HMR) or live-reloading to instantly reflect Markdown edits and CSS changes in the browser.
+
+* Acceptance Criteria
+
+- [ ] Launching the dev command opens the site on a local localhost port automatically
+- [ ] Saving modifications to a Markdown file updates the browser viewport near-instantly
+- [ ] Updating theme tokens or CSS variables applies changes without requiring a full page refresh
+- [ ] The dev server maintains local component state across hot reloads wherever technically possible
+- [ ] Emits clear compile errors directly to a browser viewport overlay if a build fails during dev

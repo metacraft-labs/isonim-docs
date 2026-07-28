@@ -1,0 +1,21 @@
+#+TITLE: Interactive Tutorials
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P2
+  :complexity: medium
+  :depends_on: extended-markdown-engine live-component-embedding routing-and-state
+  :END:
+
+A specialized documentation layout designed for step-by-step learning paths, featuring progress tracking, sequential navigation (Next/Previous), and integrated environments for embedded component sandboxes.
+
+* Acceptance Criteria
+
+- [ ] Tutorial pages display a persistent, visually clear progress indicator (e.g., Step 2 of 5)
+- [ ] Bottom pagination automatically links to the chronological next and previous steps
+- [ ] User progress (completed steps) is tracked locally via browser localStorage
+- [ ] Tutorial index pages show completion status checkmarks next to finished modules
+- [ ] Supports embedding live Nim REPL or interactive IsoNim component previews
+- [ ] Allows resetting tutorial state to clear local progression data via a UI button

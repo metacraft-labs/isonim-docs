@@ -1,0 +1,22 @@
+#+TITLE: Openapi Rest Reference
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: developer
+  :priority: P1
+  :complexity: high
+  :depends_on: routing-and-state theming-and-accessibility
+  :END:
+
+A specialized generator module that ingests OpenAPI (Swagger) JSON/YAML specifications and outputs a Stripe-style, three-column API reference complete with request/response schemas and code samples.
+
+* Acceptance Criteria
+
+- [ ] Ingests OpenAPI v3.0+ YAML or JSON specifications at build time without crashing
+- [ ] Renders a strict three-column layout: Left Navigation, Center Prose, Right Code snippets
+- [ ] Automatically generates language-specific code samples (cURL, Python, JS, Go) from schemas
+- [ ] Renders nested JSON schema objects into highly readable, collapsible parameter requirement tables
+- [ ] Right column remains sticky (position: sticky) while scrolling through the center prose
+- [ ] Mobile view elegantly collapses the three columns into a single interleaved vertical feed
+- [ ] HTTP methods (GET, POST, DELETE) are color-coded in navigation and headers

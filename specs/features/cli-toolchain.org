@@ -1,0 +1,21 @@
+#+TITLE: Cli Toolchain
+
+* Feature
+  :PROPERTIES:
+  :status: proposed
+  :origin: agent
+  :authoritative_proposal: true
+  :priority: P1
+  :complexity: medium
+  :depends_on: static-asset-pipeline routing-and-state
+  :END:
+
+A dedicated command-line interface empowering developers to initialize, scaffold, develop, build, and deploy the documentation site through standard, intuitive terminal commands.
+
+* Acceptance Criteria
+
+- [ ] init command scaffolds a new documentation directory with boilerplate config and folder structure
+- [ ] dev command launches a local, fast-reloading development HTTP server
+- [ ] build command triggers the production compilation pipeline (Markdown parsing, asset bundling)
+- [ ] Displays clear, colored terminal output with execution times, build sizes, and error diagnostics
+- [ ] Supports configuration overrides via command-line flags or environmental .env files
