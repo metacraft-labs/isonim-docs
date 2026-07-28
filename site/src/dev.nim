@@ -10,7 +10,7 @@
 ## `buildSite`-only URL transform; the dev server renders root-relative URLs, so
 ## everything resolves at http://localhost:<port>/ with no prefix.
 ##
-## Driven by `just dev` (server) + `just open` (browser); optional first arg is
+## Driven by `just dev-docs` (server) + `just open-docs` (browser); optional first arg is
 ## the port (default 8000).
 
 import std/[os, strutils, asyncdispatch]
@@ -24,7 +24,7 @@ export dev_server
 proc newDocsDevServer*(contentDir = "content";
                        assetsDirs = @["assets", "static"]): DevServer =
   ## This site's themed live-reload dev server (own content/config/tokens over
-  ## its assets/ + static/ dirs). Exposed so a test drives the exact `just dev`
+  ## its assets/ + static/ dirs). Exposed so a test drives the exact `just dev-docs`
   ## wiring without binding a socket.
   let tokensCss = emitTokensCss(isonimDocsTokenLayer(), designSystemTokens())
   newDevServer(contentDir = contentDir, cfg = isonimDocsDocsConfig(),

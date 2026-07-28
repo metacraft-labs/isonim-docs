@@ -1,4 +1,4 @@
-## Protects the `just dev` live-reload wiring for the isonim-docs self-docs:
+## Protects the `just dev-docs` live-reload wiring for the isonim-docs self-docs:
 ## themed stylesheet (token CSS prepended) + branded, reload-injected pages over
 ## its content/assets/static, and a content edit firing a reload broadcast.
 ## Same in-process idiom as the framework's own dev-server suite.
