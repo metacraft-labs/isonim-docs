@@ -420,14 +420,21 @@ proc processRequest*(server: DevServer; req: Request) {.async.} =
   await req.respond(status.HttpCode, body,
     newHttpHeaders({"Content-Type": contentType}))
 
-proc serve*(server: DevServer; port = 8000; pollIntervalMs = 250) {.async.} =
-  ## Runs the dev server: binds `port`, serves rendered routes with the
+proc serve*(server: DevServer; port = 8000; pollIntervalMs = 250;
+            host = "127.0.0.1") {.async.} =
+  ## Runs the dev server: binds `host:port`, serves rendered routes with the
   ## live-reload client injected, upgrades the reload endpoint to a WS, and
   ## polls the content dir every `pollIntervalMs` for edits (broadcasting a
   ## reload to every client on any change). Runs until cancelled.
+  ##
+  ## `host` defaults to `127.0.0.1` (LOOPBACK ONLY) -- a dev server must not
+  ## silently expose unauthenticated docs on the LAN/tailnet. Pass `0.0.0.0`
+  ## (e.g. via the consumer's `AH_DEV_HOST`/host arg) to reach it from other
+  ## devices on a trusted private network.
   var http = newAsyncHttpServer()
-  http.listen(Port(port))
-  info "dev_server_listening", port = port, contentDir = server.contentDir
+  http.listen(Port(port), host)
+  info "dev_server_listening", host = host, port = port,
+    contentDir = server.contentDir
   proc pollLoop() {.async.} =
     while true:
       await sleepAsync(pollIntervalMs)
