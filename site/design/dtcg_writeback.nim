@@ -34,6 +34,7 @@
 import std/[json, strutils, os]
 
 import core/tokens
+import core/docs_tokens  # loadDocsTokenLayer (docs-tokens writeback validation)
 import isonim/editor  # FoundationTokenEntry, SourceEditPlan (plan bridge)
 
 type
@@ -302,3 +303,122 @@ proc applyDtcgEdit*(files: openArray[DtcgFile]; plan: SourceEditPlan;
       "SourceEditPlan for '" & plan.tokenName &
       "' is a docs-layer literal with no DTCG token to write")
   applyDtcgEdit(files, key, plan.newValue, dryRun)
+
+# ===========================================================================
+# M4: docs-tokens-layer write-back (codetracer-docs.tokens.json)
+# ===========================================================================
+#
+# The DTCG path above targets the canonical brand/alias/mapped token graph.
+# The docs design system the editor mounts over is the FLATTER
+# `codetracer-design-system/docs/codetracer-docs.tokens.json`
+# (`core/docs_tokens.loadDocsTokenLayer` format):
+#
+#   { "$description": ..., "fontFaces": ...,
+#     "vars": {
+#       "--docs-accent": { "light": { "literal": "#4168cc" },
+#                          "dark":  { "literal": "#88a4f2" } },
+#       "--docs-focus-ring": { "light": { "token": "colors.blue.500" }, ... },
+#       ... } }
+#
+# An `editFoundationToken` edit over the docs `--docs-*` layer must persist to
+# THIS file so `just dev-docs` (which watches it and re-emits its token CSS on
+# change) hot-reloads all three docs sites. We reuse the SAME structure-
+# preserving raw-text machinery as the DTCG path (the `skipWs`/`scanString`/
+# `scanValue`/`findMemberValue` scanner above): locate `vars -> <var> ->
+# <side> -> literal` and splice ONLY that literal's bytes, leaving every
+# sibling var, both sides, the `$description`, the `fontFaces` prelude, key
+# order and all whitespace byte-identical. The DTCG path is untouched.
+
+proc patchDocsTokenValue*(text: string; varName, side, newValue: string):
+    tuple[newText, oldValue: string] =
+  ## Returns `text` with the `literal` value of `vars[varName][side]` replaced
+  ## by `newValue` (JSON-string encoded), plus the old raw value span. `side`
+  ## must be "light" or "dark". Only the literal's bytes change; every other
+  ## byte -- sibling vars, the other side, `$description`, `fontFaces`,
+  ## whitespace, key order -- is byte-preserved. Raises `DtcgWriteError` if the
+  ## var / side is absent or the side is a `token` binding (not an editable
+  ## literal), so a bad target NEVER corrupts the file.
+  if varName.len == 0:
+    raise newException(DtcgWriteError, "empty docs token variable name")
+  if side != "light" and side != "dark":
+    raise newException(DtcgWriteError,
+      "docs token side must be 'light' or 'dark', got '" & side & "'")
+  var brace = skipWs(text, 0)
+  if brace >= text.len or text[brace] != '{':
+    raise newException(DtcgWriteError,
+      "docs token document root is not a JSON object")
+  # Descend root -> "vars" -> <varName> -> <side>; each must be an object.
+  for seg in ["vars", varName, side]:
+    let (vs, ve) = findMemberValue(text, brace, seg)
+    if vs < 0:
+      raise newException(DtcgWriteError,
+        "docs token path not found: missing '" & seg & "' (var '" & varName &
+        "', side '" & side & "')")
+    discard ve
+    let inner = skipWs(text, vs)
+    if inner >= text.len or text[inner] != '{':
+      raise newException(DtcgWriteError,
+        "docs token member '" & seg & "' is not an object (cannot descend)")
+    brace = inner
+  # `brace` is the side object; it must carry a `literal` to be editable.
+  let (valStart, valEnd) = findMemberValue(text, brace, "literal")
+  if valStart < 0:
+    raise newException(DtcgWriteError,
+      "docs token var '" & varName & "' side '" & side &
+      "' has no 'literal' (it is a token binding, not an editable literal)")
+  let oldValue = text[valStart ..< valEnd]
+  let encoded = escapeJson(newValue)
+  result = (text[0 ..< valStart] & encoded & text[valEnd ..< text.len], oldValue)
+
+proc validateDocsTokenLayer(text: string) =
+  ## Re-parses the patched document as a docs token layer, forcing a clear
+  ## abort (before any disk write) if the patch produced invalid JSON or an
+  ## invalid layer shape. Raises `DtcgWriteError` on any failure.
+  try:
+    discard loadDocsTokenLayer(text)
+  except CatchableError as e:
+    raise newException(DtcgWriteError,
+      "patched docs token file is not a valid docs token layer: " & e.msg)
+
+proc applyDocsTokenEdit*(path, varName, newValue: string;
+    side = "light"; dryRun = false): DtcgWriteResult =
+  ## Applies `vars[varName][side].literal := newValue` to the docs token file
+  ## at `path` as a structure-preserving raw-text patch, VALIDATES that the
+  ## patched document still loads as a docs token layer, and -- unless
+  ## `dryRun` -- flushes it to disk. On ANY failure NOTHING is written (the
+  ## file stays byte-for-byte intact) and a `DtcgWriteError` is raised.
+  let text = readFile(path)
+  let (patched, oldValue) = patchDocsTokenValue(text, varName, side, newValue)
+  validateDocsTokenLayer(patched)
+  result = DtcgWriteResult(
+    targetPath: path,
+    newText: patched,
+    oldValue: oldValue,
+    newValue: escapeJson(newValue),
+    changed: patched != text,
+    written: false,
+    dryRun: dryRun)
+  if not dryRun:
+    writeFile(path, patched)
+    result.written = true
+
+proc docsVarForPlan*(plan: SourceEditPlan): string =
+  ## The `--docs-*` variable a foundation-token `SourceEditPlan` targets. The
+  ## docs adapter records the `--docs-*` name in both `property` and
+  ## `tokenName` (see `dtcg_workspace.dtcgFoundationTokens` +
+  ## `viewmodels.sourcePlan`), so either resolves the write target.
+  if plan.property.len > 0: plan.property else: plan.tokenName
+
+proc applyDocsTokenEdit*(path: string; plan: SourceEditPlan;
+    side = "light"; dryRun = false): DtcgWriteResult =
+  ## Persists an editor `SourceEditPlan` (from `editFoundationToken` over the
+  ## docs `--docs-*` layer) to the docs token file: resolves the plan to its
+  ## `--docs-*` var name, then delegates to the validated writer. `side`
+  ## defaults to "light" (the value `dtcgFoundationTokens` surfaces as the
+  ## foundation token's editable `value`). Raises `DtcgWriteError` if the plan
+  ## does not name a `--docs-*` variable.
+  let varName = docsVarForPlan(plan)
+  if varName.len == 0 or not varName.startsWith("--"):
+    raise newException(DtcgWriteError,
+      "SourceEditPlan '" & plan.tokenName & "' does not name a --docs-* variable")
+  applyDocsTokenEdit(path, varName, plan.newValue, side, dryRun)

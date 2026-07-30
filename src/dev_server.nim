@@ -28,7 +28,7 @@
 when defined(js):
   {.error: "dev_server.nim is a C-target (server-side) entry point; the dev server has no meaning on the JS/SPA target".}
 
-import std/[os, strutils, tables, algorithm, sha1, base64, asynchttpserver, asyncdispatch, asyncnet]
+import std/[os, strutils, tables, algorithm, sha1, base64, httpcore, asynchttpserver, asyncdispatch, asyncnet]
 import chronicles
 import ./core/config
 import ./ssr
@@ -41,8 +41,29 @@ const
     ## so it can never collide with a real content route.
   reloadMessage* = "reload"
     ## The single text-frame payload the server pushes on any content change.
+  defaultSavePath* = "/__isonim_save"
+    ## The in-page POST endpoint an OPT-IN `saveHandler` responds on. Namespaced
+    ## like `defaultLiveReloadPath` so it can never collide with a content route.
+    ## Inert unless a consumer wires a `saveHandler` (default docs serving for the
+    ## three consumers is byte-unchanged).
 
 type
+  SaveResult* = object
+    ## The outcome of a `saveHandler` invocation, rendered verbatim as the POST
+    ## response (status + content-type + body). A consumer's handler returns
+    ## this; the async driver just serialises it.
+    status*: int
+    contentType*: string
+    body*: string
+
+  SaveHandler* = proc(body: string): SaveResult {.closure.}
+    ## A project-owned POST handler for the save endpoint. It receives the raw
+    ## request body (typically a small JSON payload) and returns a `SaveResult`.
+    ## The framework owns NOTHING about the payload -- the consumer decodes it
+    ## and performs its own persistence (e.g. the design harness patches the
+    ## docs token file via `applyDocsTokenEdit`). `nil` (the default) leaves the
+    ## save endpoint disabled, so every existing consumer is unaffected.
+
   ContentSnapshot* = Table[string, string]
     ## Maps a content file's `contentDir`-relative path to a content hash.
     ## A pure value: two snapshots differing means the served content
@@ -89,6 +110,14 @@ type
       ## Extra individual files to watch alongside `contentDir` (e.g. the shared
       ## design-system token JSON). A change to any of them triggers a reload,
       ## exactly like a content edit.
+    saveHandler*: SaveHandler
+      ## Optional POST handler mounted at `savePath`. When set, a POST to that
+      ## path is dispatched to this closure instead of being rendered as a route;
+      ## when `nil` (default) a POST to the save path 404s and nothing else
+      ## changes -- so the design harness can opt into a live in-browser save
+      ## without altering the three docs consumers' default behaviour.
+    savePath*: string
+      ## The path `saveHandler` answers on (default `defaultSavePath`).
 
 # ---------------------------------------------------------------------------
 # Reload hub — the transport-agnostic fan-out the watcher feeds and the WS
@@ -224,7 +253,9 @@ proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
                     render: RenderFn = nil;
                     assetsDirs: seq[string] = @[]; docsTokensCss = "";
                     tokensCssProvider: proc(): string {.closure.} = nil;
-                    watchPaths: seq[string] = @[]): DevServer =
+                    watchPaths: seq[string] = @[];
+                    saveHandler: SaveHandler = nil;
+                    savePath = defaultSavePath): DevServer =
   ## Constructs a dev server over `contentDir`, taking the initial snapshot up
   ## front so the first `pollForChanges` reports only genuine edits made after
   ## startup. `assetsDirs`/`docsTokensCss` (both optional) make the server serve
@@ -242,7 +273,9 @@ proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
     assetsDirs: assetsDirs,
     docsTokensCss: docsTokensCss,
     tokensCssProvider: tokensCssProvider,
-    watchPaths: watchPaths)
+    watchPaths: watchPaths,
+    saveHandler: saveHandler,
+    savePath: savePath)
   # Initial snapshot covers content + the watched files.
   result.snapshot = snapshotContentDir(contentDir)
   for k, v in snapshotWatchPaths(watchPaths):
@@ -315,6 +348,23 @@ proc handleRoute*(server: DevServer; path: string):
     error "dev_server_render_failed", route = path, err = e.msg
     (500, "text/html; charset=utf-8",
       renderErrorOverlay(path, e.msg, server.liveReloadPath))
+
+proc handleSave*(server: DevServer; body: string): SaveResult =
+  ## Dispatches a POST save `body` to the consumer-supplied `saveHandler`. When
+  ## no handler is wired (the default for every docs consumer), the endpoint is
+  ## inert and returns 404 -- so a stray POST can never mutate anything. The
+  ## handler owns decoding + persistence; a raised error is turned into a 500 so
+  ## a bad payload never drops the connection. Directly unit-testable without a
+  ## socket: construct a server with a handler, call `handleSave`, assert both
+  ## the returned `SaveResult` and the handler's side effect (the patched file).
+  if server.saveHandler.isNil:
+    return SaveResult(status: 404, contentType: "text/plain; charset=utf-8",
+      body: "save endpoint not enabled")
+  try:
+    result = server.saveHandler(body)
+  except CatchableError as e:
+    result = SaveResult(status: 500, contentType: "text/plain; charset=utf-8",
+      body: "save handler failed: " & e.msg)
 
 proc pollForChanges*(server: DevServer): seq[string] =
   ## The watcher tick: re-snapshot the content dir + the watched files, diff
@@ -413,6 +463,15 @@ proc processRequest*(server: DevServer; req: Request) {.async.} =
   ## Single request dispatch shared by the production loop (below) and any
   ## test driver: a WS upgrade on the reload path opens the live-reload
   ## channel; anything else is rendered HTML (or the error overlay).
+  if req.url.path == server.savePath and req.reqMethod == HttpPost:
+    # Opt-in in-browser save: dispatch the POST body to the consumer's handler.
+    # A same-origin fetch from the served editor lands here; the handler patches
+    # the design-system file and the watcher (if any) reloads dependents.
+    let saved = handleSave(server, req.body)
+    await req.respond(saved.status.HttpCode, saved.body,
+      newHttpHeaders({"Content-Type": saved.contentType,
+        "Access-Control-Allow-Origin": "*"}))
+    return
   if req.url.path == server.liveReloadPath and isWebSocketUpgrade(req):
     await serveWebSocket(server, req)
     return

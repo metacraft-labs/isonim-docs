@@ -31,10 +31,29 @@ import std/strutils
 import isonim/editor
 import core/[tokens, docs_tokens]
 
+# The real isonim-docs components (SSR-string renderers) + their view
+# models. These are the SAME modules the live docs site (`src/main_web.nim`,
+# `src/ssr.nim`) renders through, so the editor's per-story preview shows
+# the ACTUAL docs shell / nav / markdown / admonitions / search chrome --
+# themed by the live `--docs-*` tokens -- rather than mock HTML. Every
+# `*Html` proc used below is a pure string builder that compiles and runs
+# on both the C and JS targets.
+import core/[markdown_vm, navigation_vm, search_vm, theme_vm, config]
+import components/[markdown_view, navigation_view, search_view, shell,
+                   markdown_page]
+
 const DocsThemeSource* = "site/src/theme_tokens.nim"
   ## The source file the docs token layer is authored in; recorded on each
   ## FoundationTokenEntry so the editor's "open source" affordance and the
   ## M2 write-back have a real anchor.
+
+const docsSaveEndpoint* = "/__isonim_save"
+  ## The dev-server POST route the live editor persists a foundation edit to
+  ## (M4b). Shared by the JS mount harness (`design/main.nim`, which `fetch`es it
+  ## same-origin) and the native design save server (`design/serve.nim`, which
+  ## mounts a `saveHandler` there). Kept in step with `dev_server.defaultSavePath`
+  ## but declared here so both the JS and native halves import it from one place
+  ## without the JS build touching the native-only `dev_server`.
 
 # ---------------------------------------------------------------------------
 # $type / name -> FoundationTokenKind
@@ -248,11 +267,20 @@ proc docsStoryGroups*(): seq[StoryGroup] =
       description: "Docs design tokens (--docs-*): colours, type, spacing",
       items: @[
         StoryItem(name: "Colors", description: "Surface, text, accent & severity colours",
-          kind: skFoundation, group: "Foundations"),
+          kind: skFoundation, group: "Foundations",
+          # bg/fg/border/accent/link/code/tok/api + admonition colours
+          # (ftkColorPalette), the aliased severity/focus colours
+          # (ftkSemanticColor) and the surface shadow (ftkShadow).
+          foundationCategories: {ftkColorPalette, ftkSemanticColor, ftkShadow}),
         StoryItem(name: "Typography", description: "Geist font stack, sizes, line height",
-          kind: skFoundation, group: "Foundations"),
+          kind: skFoundation, group: "Foundations",
+          # font-sans/mono, font-size-*, line-height (ftkTypographyScale).
+          foundationCategories: {ftkTypographyScale}),
         StoryItem(name: "Spacing & Radii", description: "Spacing scale + border radii vocabulary",
-          kind: skFoundation, group: "Foundations")]),
+          kind: skFoundation, group: "Foundations",
+          # space-* (ftkSpacingScale), radius-* (ftkRadiusScale) and the
+          # sidebar/content widths (ftkBreakpoint).
+          foundationCategories: {ftkSpacingScale, ftkRadiusScale, ftkBreakpoint})]),
     StoryGroup(name: "Docs Shell", kind: skPage, expanded: true,
       description: "The full documentation page frame (header + nav + main + footer)",
       items: @[
@@ -304,6 +332,184 @@ proc docsCanvasItems*(): seq[CanvasItem] =
   ]
 
 # ---------------------------------------------------------------------------
+# Story -> real docs-component HTML (the pbWeb preview `documentHtml` seam)
+# ---------------------------------------------------------------------------
+#
+# ROOT CAUSE of the blank previews (M3): the editor's Web preview path
+# (`views/page_preview.nim` for the skPage "Full page", `views/
+# component_detail.nim` for the skComponent stories) mounts the project's
+# HTML in an iframe via `srcdoc`, and it renders EXCLUSIVELY from
+# `ProjectPreview.documentHtml`. The previous hook only ever populated
+# `bodyText` (a `--docs-*=value` token dump), never `documentHtml`, so
+# `showProject`/the srcdoc branch was always false: component stories fell
+# back to the generic empty "Project-owned component state" surface and the
+# full page fell back to the whitish empty-state panel. Supplying real
+# `documentHtml` per story is the fix -- and it lives entirely harness-side,
+# so no other editor pilot changes.
+
+const docsPreviewStylesheet = staticRead("../assets/style.css")
+  ## The live docs site stylesheet (the same `site/assets/style.css` the
+  ## framework serves), embedded so each preview's real docs-component
+  ## markup is styled exactly like production. Its baked `:root {--docs-*}`
+  ## block is overridden below by a `:root` block built from the LIVE
+  ## foundation-token values, so an in-editor edit re-themes the preview.
+
+const docsPreviewBaseCss =
+  "html,body{margin:0;padding:0}" &
+  "body{background:var(--docs-bg);color:var(--docs-fg);" &
+  "font-family:var(--docs-font-sans,system-ui,sans-serif)}"
+
+proc docsPreviewRootVars(tokens: seq[FoundationTokenEntry]): string =
+  ## A `:root { --docs-*: <live value>; }` block built from the CURRENT
+  ## foundation tokens. Emitted AFTER the embedded stylesheet so the live
+  ## (as-edited) values win over the stylesheet's build-time defaults.
+  result = ":root{"
+  for t in tokens:
+    if t.key.len > 2 and t.key[0] == '-' and t.key[1] == '-':
+      result.add t.key & ":" & t.value & ";"
+  result.add "}"
+
+proc wrapDocsPreviewDocument(bodyHtml: string;
+    tokens: seq[FoundationTokenEntry]): string =
+  ## Wraps a component's rendered markup in a full themed HTML document for
+  ## the editor's iframe `srcdoc`.
+  "<!doctype html><html><head><meta charset=\"utf-8\">" &
+  "<style>\n" & docsPreviewBaseCss & "\n" & docsPreviewStylesheet & "\n" &
+    docsPreviewRootVars(tokens) & "\n</style>" &
+  "</head><body>" & bodyHtml & "</body></html>"
+
+proc docsSampleNavigation(): NavigationViewModel =
+  ## A representative docs sidebar tree (the real `NavigationViewModel`
+  ## shape) so the Navigation + Docs Shell stories render genuine nav links.
+  let gettingStarted = NavSection(
+    key: "getting-started", title: "Getting Started", isExpanded: true,
+    items: @[
+      NavItem(routePath: "/introduction", title: "Introduction", isActive: true),
+      NavItem(routePath: "/installation", title: "Installation")])
+  let usageGuide = NavSection(
+    key: "guide", title: "Usage Guide", isExpanded: true,
+    items: @[
+      NavItem(routePath: "/guide/tracepoints", title: "Tracepoints"),
+      NavItem(routePath: "/guide/interface", title: "Graphical interface"),
+      NavItem(routePath: "/guide/cli", title: "Command-line interface")])
+  let reference = NavSection(
+    key: "reference", title: "Reference", isExpanded: false,
+    items: @[
+      NavItem(routePath: "/reference/build-systems", title: "Build systems")])
+  NavigationViewModel(sidebar: SidebarViewModel(
+    sections: @[gettingStarted, usageGuide, reference]))
+
+const
+  docsProseMarkdown = """
+## Introduction
+
+CodeTracer records your program's whole execution so you can step
+**backward** and forward through time. See the
+[tracepoints guide](/guide/tracepoints) for the full workflow.
+
+- Deterministic, replayable traces
+- Omniscient debugging across the entire run
+- Works from the CLI or the graphical interface
+"""
+
+  docsCodeMarkdown = """
+## Recording a trace
+
+Wrap the entry point you want to record and run it under the tracer:
+
+```nim
+proc main() =
+  let trace = startTrace("demo")
+  echo "hello, time-travel"
+  trace.finish()
+
+main()
+```
+"""
+
+  docsNoteMarkdown = """
+:::note
+Traces are stored under `.codetracer/` next to your project. Commit the
+directory to share a reproducible recording with your team.
+:::
+"""
+
+  docsTipMarkdown = """
+:::tip
+Press **F5** to jump straight to the next tracepoint hit instead of
+stepping line by line.
+:::
+"""
+
+  docsWarningMarkdown = """
+:::warning
+Recording a long-running process can produce large traces. Scope the
+recording to the function under investigation where possible.
+:::
+"""
+
+  docsDangerMarkdown = """
+:::danger
+Deleting the trace database while the debugger is attached will corrupt the
+active session. Detach first.
+:::
+"""
+
+  docsFullPageMarkdown = """
+## Welcome to CodeTracer Docs
+
+CodeTracer is a time-travelling debugger. This page is composed from the
+real documentation shell -- header, sidebar navigation, markdown body and
+footer -- exactly as the live site renders it.
+
+### Start here
+
+- [Introduction](/introduction)
+- [Installation](/installation)
+- [Tracepoints](/guide/tracepoints)
+
+```nim
+echo "step backward and forward through time"
+```
+"""
+
+proc docsStoryBodyHtml(story: StoryRef; nav: NavigationViewModel;
+    search: SearchViewModel; theme: ThemeViewModel): string =
+  ## Renders the REAL isonim-docs component for `story` to an HTML string.
+  ## Returns "" for stories with no component surface (e.g. the Foundations
+  ## token stories, which the editor's foundations view renders itself).
+  case story.group
+  of "Docs Shell":
+    renderMarkdownPageHtml("CodeTracer Documentation",
+      parseMarkdownBlocks(docsFullPageMarkdown), nav, search, theme)
+  of "Navigation":
+    if story.name == "Top nav":
+      renderDocsHeaderHtml("CodeTracer Docs", search, theme,
+        chrome = DocsChrome(headerLinks: @[
+          (label: "Docs", href: "/"),
+          (label: "Reference", href: "/reference"),
+          (label: "GitHub", href: "https://github.com/metacraft-labs/codetracer")]))
+    else:
+      renderNavigationHtml(nav)
+  of "Markdown Body":
+    if story.name == "Code block":
+      renderMarkdownBodyHtml(parseMarkdownBlocks(docsCodeMarkdown))
+    else:
+      renderMarkdownBodyHtml(parseMarkdownBlocks(docsProseMarkdown))
+  of "Admonitions":
+    let md =
+      case story.name
+      of "Tip": docsTipMarkdown
+      of "Warning": docsWarningMarkdown
+      of "Danger": docsDangerMarkdown
+      else: docsNoteMarkdown
+    renderMarkdownBodyHtml(parseMarkdownBlocks(md))
+  of "Search":
+    renderSearchBoxHtml(search)
+  else:
+    ""
+
+# ---------------------------------------------------------------------------
 # Live-preview hook: re-resolves --docs-* from the live foundation tokens
 # ---------------------------------------------------------------------------
 
@@ -315,36 +521,170 @@ proc docsPreviewHook*(tokensAccessor: proc(): seq[FoundationTokenEntry] {.closur
   ## on every call, editing a token via the editor VM and re-rendering the
   ## bound story reflects the new value -- the "VariableBinding re-resolves"
   ## contract, exercised headlessly by the mount/preview test.
+  ##
+  ## M3: in addition to the `bodyText` token dump (kept for the impact/
+  ## re-resolution contract the M1 test asserts), each story now also
+  ## produces `documentHtml` -- the real docs-component markup themed by the
+  ## live tokens. `documentHtml` is the Web preview seam the editor mounts
+  ## in-iframe via `srcdoc`; supplying it is what makes the previously-blank
+  ## component + full-page previews render.
   result = proc(story: StoryRef; platform: Platform): ProjectPreview =
     let tokens = tokensAccessor()
-    proc valueOf(prop: string): string =
-      for t in tokens:
-        if t.property == prop or t.key == prop: return t.value
-      ""
     # The --docs-* variables this particular story showcases.
     var lines: seq[string]
     for t in tokens:
       if story in t.affectedStories:
         lines.add t.key & "=" & t.value
-    if lines.len == 0:
+    # The real docs-component HTML for this story, themed by the live tokens.
+    let body = docsStoryBodyHtml(story, docsSampleNavigation(),
+      SearchViewModel(), ThemeViewModel())
+    let documentHtml =
+      if body.len > 0: wrapDocsPreviewDocument(body, tokens) else: ""
+    if lines.len == 0 and documentHtml.len == 0:
       return ProjectPreview(status: ppsUnsupportedStory, story: story)
     ProjectPreview(
       status: ppsRendered,
       story: story,
       title: story.group & " / " & story.name,
-      bodyText: lines.join("; "))
+      bodyText: lines.join("; "),
+      documentHtml: documentHtml)
+
+# ---------------------------------------------------------------------------
+# M4b: live save broker -- a WorkspaceEditAdapter that routes the editor's
+# foundation "Save" through a project-owned `persist` closure.
+# ---------------------------------------------------------------------------
+#
+# The editor's Save button (eckSave -> applyWorkspaceFileEdits) drives the
+# framework's existing broker seam, `WorkspaceEditAdapter`. The docs workspace
+# had no adapter (so Save was inert). This builds one whose ONLY side effect is
+# to call `persist(varName, side, value)` -- the JS harness supplies a `persist`
+# that `fetch`es the dev-server save route; a native test supplies a capturing
+# one and drives the FULL transaction on the C target. The adapter never patches
+# text itself (the server owns the structure-preserving M4 writeback); it holds
+# a placeholder document so the transaction's read/patch/write steps have
+# non-empty content to move through, and `allowMissingExpectedOldValue` so a
+# resolved token value that is not literally present in the placeholder does not
+# trip the source-conflict guard.
+
+type DocsFoundationPersist* = proc(varName, side, value: string): bool {.closure.}
+  ## Project-owned persistence of one foundation edit. Returns whether the save
+  ## succeeded. Pure interface: no filesystem / network types leak here, so the
+  ## adapter compiles on both the C and JS targets.
+
+const docsAdapterPlaceholder = "docs-token-layer"
+  ## Non-empty stand-in `readFile` content: the docs adapter defers the real
+  ## patch to the server, so the transaction only needs SOME non-empty document
+  ## to carry through read -> patch -> write.
+
+proc docsWorkspaceEditAdapter*(tokens: seq[FoundationTokenEntry];
+    persist: DocsFoundationPersist; side = "light"): WorkspaceEditAdapter =
+  ## A `WorkspaceEditAdapter` over the docs foundation tokens whose `writeFile`
+  ## flushes each pending foundation edit through `persist`. `patchFile` records
+  ## the edit's `--docs-*` variable + new value (resolved from the plan exactly
+  ## as `docsVarForPlan` does); `writeFile` replays them through `persist`. One
+  ## schema entry per token maps the editor's `SourceEditPlan` back onto a
+  ## write target.
+  var schema: seq[WorkspaceEditableSchemaEntry]
+  for t in tokens:
+    schema.add WorkspaceEditableSchemaEntry(
+      key: t.schemaKey,
+      kind: wskToken,
+      file: DocsThemeSource,
+      path: t.key,
+      story: (if t.affectedStories.len > 0: t.affectedStories[0]
+              else: StoryFoundColors),
+      property: t.property)
+  result = WorkspaceEditAdapter(schema: schema,
+    allowMissingExpectedOldValue: true)
+  let pending = new(seq[tuple[varName, side, value: string]])
+  pending[] = @[]
+  let capturedSide = side
+  let capturedPersist = persist
+  result.readFile = proc(file: string): WorkspaceReadResult =
+    WorkspaceReadResult(ok: true, content: docsAdapterPlaceholder)
+  result.patchFile = proc(plan: SourceEditPlan; content: string;
+      entry: WorkspaceEditableSchemaEntry): WorkspacePatchResult =
+    let varName = if plan.property.len > 0: plan.property else: plan.tokenName
+    pending[].add (varName, capturedSide, plan.newValue)
+    WorkspacePatchResult(ok: true, patch: WorkspaceFilePatch(
+      file: DocsThemeSource,
+      afterContent: content,          # server owns the real patch; keep non-empty
+      affectedStory: entry.story,
+      fullReload: false))
+  result.writeFile = proc(file, content: string): WorkspaceOperationResult =
+    var ok = true
+    for edit in pending[]:
+      if not capturedPersist(edit.varName, edit.side, edit.value):
+        ok = false
+    pending[] = @[]
+    if ok: WorkspaceOperationResult(ok: true)
+    else: WorkspaceOperationResult(ok: false,
+      message: "docs foundation save failed",
+      diagnostics: @[WorkspaceEditDiagnostic(kind: wedWriteFailed,
+        message: "The docs save endpoint rejected the edit.",
+        file: DocsThemeSource)])
+
+when defined(js):
+  # JS-target persistence: POST the edit to the dev-server save route. The
+  # editor runs in the browser with no filesystem, so this is the ONLY way an
+  # in-editor edit reaches disk. `fetch` is fire-and-forget (the editor already
+  # re-themes its own preview live via the M3 hook); the server does the
+  # structure-preserving write + the docs sites hot-reload from the file change.
+  proc jsPostJson(url, body: cstring) =
+    {.emit: """
+    try {
+      fetch(`url`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: `body` });
+    } catch (e) {}
+    """.}
+
+  proc jsonQuote(s: string): string =
+    ## Minimal JSON string encoder (avoids pulling std/json into the JS bundle).
+    result = "\""
+    for c in s:
+      case c
+      of '"': result.add "\\\""
+      of '\\': result.add "\\\\"
+      of '\n': result.add "\\n"
+      of '\r': result.add "\\r"
+      of '\t': result.add "\\t"
+      else: result.add c
+    result.add "\""
+
+  proc postDocsFoundationSave*(endpoint, varName, side, value: string): bool
+      {.discardable.} =
+    ## Issue the foundation-save POST `{"var":..,"side":..,"value":..}` to
+    ## `endpoint`. Returns true (the POST is dispatched fire-and-forget; the
+    ## server's response drives the file write + hot-reload, not this call).
+    let payload = "{" & jsonQuote("var") & ":" & jsonQuote(varName) & "," &
+      jsonQuote("side") & ":" & jsonQuote(side) & "," &
+      jsonQuote("value") & ":" & jsonQuote(value) & "}"
+    jsPostJson(endpoint.cstring, payload.cstring)
+    true
+
+  proc docsFetchPersist*(endpoint = docsSaveEndpoint): DocsFoundationPersist =
+    ## The JS harness's `persist`: every foundation Save POSTs to `endpoint`.
+    (proc(varName, side, value: string): bool =
+      postDocsFoundationSave(endpoint, varName, side, value))
 
 # ---------------------------------------------------------------------------
 # Full workspace assembly
 # ---------------------------------------------------------------------------
 
 proc metacraftEditorWorkspace*(layer: DocsTokenLayer; ts: TokenSet;
-    tokensAccessor: proc(): seq[FoundationTokenEntry] {.closure.} = nil):
+    tokensAccessor: proc(): seq[FoundationTokenEntry] {.closure.} = nil;
+    foundationSave: DocsFoundationPersist = nil; saveSide = "light"):
     EditorWorkspace =
   ## Assembles the complete Metacraft docs `EditorWorkspace`: the DTCG-derived
   ## foundation tokens + design schema, the real docs-component stories, and
   ## a live-preview hook. When `tokensAccessor` is nil (e.g. before a VM
   ## exists), a snapshot accessor over the freshly-built tokens is used.
+  ## When `foundationSave` is supplied (the live-save wiring, M4b) the workspace
+  ## gains a `WorkspaceEditAdapter` that routes the editor's Save through it and
+  ## flips `writeSource` on, so the Save button is live. When it is nil (the
+  ## default, and every M1--M4 test) the workspace is byte-identical to before:
+  ## no adapter, read-only source, Save inert.
   var tokens = dtcgFoundationTokens(layer, ts)
   wireContrastPairs(tokens)
   let schema = dtcgDesignSchema(layer, ts, tokens)
@@ -353,6 +693,12 @@ proc metacraftEditorWorkspace*(layer: DocsTokenLayer; ts: TokenSet;
   let accessor =
     if tokensAccessor.isNil: (proc(): seq[FoundationTokenEntry] = snapshot)
     else: tokensAccessor
+  let editAdapter =
+    if foundationSave.isNil: nil
+    else: docsWorkspaceEditAdapter(tokens, foundationSave, saveSide)
+  let permissions = EditorWorkspacePermissions(
+    readSource: true, writeSource: not foundationSave.isNil,
+    createStory: false, createVariant: false, duplicate: false, delete: false)
   result = newEditorWorkspace(
     title = "Metacraft Docs Design System",
     storyGroups = groups,
@@ -362,7 +708,32 @@ proc metacraftEditorWorkspace*(layer: DocsTokenLayer; ts: TokenSet;
     foundationTokens = tokens,
     designSystemSchema = schema,
     initialView = evFoundationsPage,
+    allowedPlatforms = {pbWeb},
     previewHook = docsPreviewHook(accessor),
-    permissions = EditorWorkspacePermissions(
-      readSource: true, writeSource: false, createStory: false,
-      createVariant: false, duplicate: false, delete: false))
+    editAdapter = editAdapter,
+    permissions = permissions)
+
+# ---------------------------------------------------------------------------
+# M4: native save seam -- persist a foundation-token edit to the docs token
+# file (codetracer-docs.tokens.json) so `just dev-docs` hot-reloads the sites.
+# ---------------------------------------------------------------------------
+#
+# The JS mount harness (`design/main.nim`) has NO filesystem, so persistence
+# of an in-editor edit is a native operation (a `just dev-docs` / CLI save
+# host round-trips the editor's `SourceEditPlan` to disk). This seam maps an
+# `editFoundationToken` plan onto the M4 docs-tokens write-back. It is
+# native-only (`dtcg_writeback` uses `std/os`), so the JS build of this module
+# -- and every editor pilot -- is byte-unchanged.
+when not defined(js):
+  import ./dtcg_writeback
+  export dtcg_writeback
+
+  proc persistDocsFoundationEdit*(docsTokenFile: string; plan: SourceEditPlan;
+      side = "light"; dryRun = false): DtcgWriteResult =
+    ## Persist a docs foundation-token `SourceEditPlan` (the plan
+    ## `editFoundationToken` emits, carried on its `FoundationEditResult`) to
+    ## the shared docs token file as a structure-preserving, validated
+    ## raw-text patch. `docsTokenFile` is the workspace's
+    ## `theme_tokens.docsDesignSystemPath`. On any failure NOTHING is written
+    ## and a `DtcgWriteError` is raised.
+    applyDocsTokenEdit(docsTokenFile, plan, side, dryRun)

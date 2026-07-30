@@ -42,6 +42,24 @@ suite "docs content components -- parsing (Tier 1, dual-target)":
     check spansText(blocks[0].cards[0].body[0]) == "Install and record your first trace."
     check blocks[0].cards[1].title == "Reference"
     check spansText(blocks[0].cards[1].body[0]) == "The full API surface."
+    # M6: a plain `:::cards` grid has NO variant, so it keeps the default
+    # (category-card) look byte-for-byte.
+    check blocks[0].gridVariant == ""
+
+  test "M6: :::cards variant=\"compact\" parses gridVariant, unknown/absent normalizes to \"\"":
+    let compact = parseMarkdownBlocks(
+      ":::cards variant=\"compact\"\n:::card title=\"Introduction\" href=\"a.md\"\nGetting Started\n:::")
+    check compact.len == 1
+    check compact[0].kind == bkCardGrid
+    check compact[0].gridVariant == "compact"
+    # An unrecognized value falls back to the default (empty) variant, so a
+    # typo can never silently change an existing grid's look.
+    let bogus = parseMarkdownBlocks(":::cards variant=\"wide\"\n:::card title=\"X\" href=\"x.md\"\nY\n:::")
+    check bogus[0].gridVariant == ""
+
+  test "M6: pageHasHero detects a landing (hero present) vs a normal article":
+    check pageHasHero(parseMarkdownBlocks(":::hero title=\"Welcome\"\n:::"))
+    check not pageHasHero(parseMarkdownBlocks("## Heading\n\nA paragraph.\n"))
 
   test ":::hero parses title/subtitle attrs and its :::button action list":
     let raw = ":::hero title=\"Welcome\" subtitle=\"Docs for everyone\"\n" &
@@ -148,6 +166,18 @@ suite "docs content components -- MockRenderer rendering (Tier 2, dual-target)":
     check textContent(cards[0]).contains("Start")
     check textContent(cards[0]).contains("First steps.")
 
+  test "M6: a compact card grid tags grid + cards with the --compact modifier (MockRenderer)":
+    let raw = ":::cards variant=\"compact\"\n:::card title=\"Introduction\" href=\"a.md\"\nGetting Started\n:::"
+    let r = MockRenderer()
+    let root = renderMarkdownBody[MockRenderer, MockNode](r, parseMarkdownBlocks(raw))
+    let grid = findWhere(root, proc(n: MockNode): bool =
+      n.kind == mnkElement and
+      getAttribute(r, n, "class") == cardGridClass & " " & cardGridCompactClass)
+    require grid != nil
+    let cards = findAllByTag(grid, "a")
+    check cards.len == 1
+    check getAttribute(r, cards[0], "class") == cardClass & " " & cardCompactClass
+
   test "hero renders an <h1> title, a subtitle, and its action buttons":
     let raw = ":::hero title=\"Welcome\" subtitle=\"Sub\"\n" &
       ":::button href=\"a.md\" variant=\"primary\"\nGet Started\n" &
@@ -207,6 +237,20 @@ suite "docs content components -- SSR string rendering (Tier 2, dual-target)":
     check html.contains("<img src=\"/img/s.svg\" alt=\"\" />")
     check html.contains(">Start</div>")
     check html.contains("First steps.")
+
+  test "M6: a compact card grid serializes the --compact modifier; a default grid does not":
+    let compactHtml = renderMarkdownBodyHtml(parseMarkdownBlocks(
+      ":::cards variant=\"compact\"\n:::card title=\"Introduction\" href=\"a.md\"\nGetting Started\n:::"))
+    check compactHtml.contains("<div class=\"" & cardGridClass & " " & cardGridCompactClass & "\">")
+    check compactHtml.contains("<a class=\"" & cardClass & " " & cardCompactClass & "\" href=\"a.md\">")
+    # Backward-compat: a plain `:::cards` grid still emits exactly the pre-M6
+    # classes -- no `--compact` modifier leaks onto a default grid.
+    let defaultHtml = renderMarkdownBodyHtml(parseMarkdownBlocks(
+      ":::cards\n:::card title=\"Introduction\" href=\"a.md\"\nGetting Started\n:::"))
+    check defaultHtml.contains("<div class=\"" & cardGridClass & "\">")
+    check defaultHtml.contains("<a class=\"" & cardClass & "\" href=\"a.md\">")
+    check not defaultHtml.contains(cardGridCompactClass)
+    check not defaultHtml.contains(cardCompactClass)
 
   test "hero serializes an <h1>, a subtitle, and primary/secondary buttons":
     let raw = ":::hero title=\"Welcome\" subtitle=\"Sub\"\n" &

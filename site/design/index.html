@@ -23,12 +23,17 @@
   <body>
     <!--
       Live editor over the isonim-docs `--docs-*` design-system token layer.
-      Build the bundle with:
+      Served over HTTP by `design/serve.nim` (run via `just design`), which
+      hosts this page, serves the JS bundle under `/assets/`, and exposes the
+      `/__isonim_save` POST route the editor's foundation "Save" calls. Being
+      served same-origin is what makes that `fetch` (and therefore live,
+      in-browser persistence to the docs token file) work.
+
+      Build the bundle standalone with:
         nix develop ../../isonim -c \
           nim js --hints:off -o:build/design_editor.js main.nim
-      then serve this directory (any static server) and open index.html.
       `mountEditor` attaches the editor shell to <body>.
     -->
-    <script src="build/design_editor.js"></script>
+    <script src="/assets/design_editor.js"></script>
   </body>
 </html>

@@ -32,11 +32,23 @@ serve-docs:
 
 # Launch the live design-system editor: an isonim editor instance over the
 # Metacraft DTCG docs tokens (design/). Builds the client-side editor JS (the
-# token set is staticRead-embedded, so it runs straight from index.html) and
-# opens it. The editor loads the brand/alias/mapped tokens + previews real docs
-# components live; persisting an edit back to codetracer-design-system/*.json is
-# the C-target writeback (design/dtcg_writeback). Needs the isonim editor's extra
-# sibling checkouts (see design/config.nims).
-design:
+# token set is staticRead-embedded) and SERVES it over HTTP via design/serve.nim
+# so the editor's foundation "Save" can POST to the /__isonim_save route
+# (same-origin) and persist the edit to codetracer-design-system/docs/
+# codetracer-docs.tokens.json through the M4 writeback. Run `just dev-docs` in
+# another shell to watch that saved edit hot-reload the live docs. Needs the
+# isonim editor's extra sibling checkouts (see design/config.nims).
+#
+# (M4b changed this target: it now serves the editor over the dev server instead
+# of opening design/index.html as a file:// -- required for the save `fetch` to
+# reach the server same-origin. Build the bundle without serving via `just
+# design-build`.)
+design port='8080' host='127.0.0.1':
     nim js --hints:off -o:design/build/design_editor.js design/main.nim
-    @xdg-open design/index.html 2>/dev/null || open design/index.html 2>/dev/null || echo "open $(pwd)/design/index.html in a browser"
+    @echo "design editor on http://{{host}}:{{port}}/  (Ctrl-C to stop; run `just dev-docs` in another shell to see saves hot-reload the docs)"
+    nim c -r --hints:off design/serve.nim {{port}} {{host}}
+
+# Build the design editor JS bundle only (no server) -- e.g. for the harness
+# JS build check.
+design-build:
+    nim js --hints:off -o:design/build/design_editor.js design/main.nim

@@ -34,7 +34,11 @@ proc main() =
   var editor: EditorVM
   let ws = metacraftEditorWorkspace(layer, ts,
     tokensAccessor = proc(): seq[FoundationTokenEntry] =
-      if editor.isNil: @[] else: editor.foundations.tokens.val)
+      if editor.isNil: @[] else: editor.foundations.tokens.val,
+    # M4b: the editor's foundation "Save" POSTs each edit to the dev-server save
+    # route (same-origin when served by `design/serve.nim`), which patches the
+    # docs token file and lets `just dev-docs` hot-reload the live docs.
+    foundationSave = docsFetchPersist())
   editor = mountEditor(ws)
 
 main()

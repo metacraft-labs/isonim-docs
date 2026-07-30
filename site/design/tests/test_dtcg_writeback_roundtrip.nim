@@ -22,6 +22,7 @@ import core/[tokens, docs_tokens]
 import isonim/editor
 import ../dtcg_workspace
 import ../dtcg_writeback
+import ../../src/theme_tokens  # docsDesignSystemPath + designSystemTokens (M4)
 
 # ---------------------------------------------------------------------------
 # Fixture: a brand -> alias -> mapped chain WITH $extensions (Figma metadata)
@@ -265,3 +266,199 @@ suite "DTCG write-back round-trip + guards (M2)":
     except DtcgWriteError:
       raised = true
     check raised
+
+# ---------------------------------------------------------------------------
+# M4: docs-tokens-layer write-back (codetracer-docs.tokens.json)
+# ---------------------------------------------------------------------------
+#
+# The docs editor mounts over the FLATTER `loadDocsTokenLayer` file, not the
+# brand/alias/mapped DTCG graph. These tests operate on a TEMP COPY of the
+# real `codetracer-docs.tokens.json` (never the checked-in file) and prove the
+# M4 writer: a foundation-token edit persists to that file as a structure-
+# preserving patch of exactly one `{"<side>":{"literal":...}}` leaf, the file
+# still loads via `loadDocsTokenLayer` (so `just dev-docs`'s token hot-reload
+# re-emits the new value), and a bad target is rejected without corrupting the
+# file.
+
+proc mkDocsCopy(): string =
+  ## Copy the real shared docs token file into a temp dir so the tests can
+  ## patch it without ever mutating the checked-in source.
+  let dir = createTempDir("docs_wb_", "_fixture")
+  result = dir / "codetracer-docs.tokens.json"
+  copyFile(docsDesignSystemPath, result)
+
+## Flatten a docs token layer JSON to {"--docs-x.light" -> compact side JSON}
+## so a deep diff shows precisely which var + side (and its literal) changed.
+proc docsSideLeaves(text: string): Table[string, string] =
+  result = initTable[string, string]()
+  let doc = parseJson(text)
+  for name, spec in doc["vars"]:
+    for side in ["light", "dark"]:
+      if spec.hasKey(side):
+        result[name & "." & side] = $spec[side]
+
+proc sideLiteral(text, varName, side: string): string =
+  ## The `literal` string of `vars[varName][side]`, or "" if it is a token side.
+  let s = parseJson(text)["vars"][varName][side]
+  if s.hasKey("literal"): s["literal"].getStr else: ""
+
+suite "docs-tokens write-back (M4)":
+
+  test "a colour edit changes exactly one side-leaf and preserves the rest":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let orig = readFile(path)
+    let before = docsSideLeaves(orig)
+
+    let res = applyDocsTokenEdit(path, "--docs-accent", "#123456", side = "light")
+    check res.written
+    check res.changed
+    check res.targetPath == path
+
+    let after = docsSideLeaves(readFile(path))
+
+    # (a) exactly the target side-leaf differs; every other var + side is intact.
+    check before.len == after.len
+    var changedKeys: seq[string]
+    for k, v in before:
+      if after[k] != v: changedKeys.add k
+    check changedKeys == @["--docs-accent.light"]
+
+    # (b) only the literal changed; the dark side of the SAME var is untouched.
+    check sideLiteral(readFile(path), "--docs-accent", "light") == "#123456"
+    check sideLiteral(readFile(path), "--docs-accent", "dark") ==
+          sideLiteral(orig, "--docs-accent", "dark")
+
+    # (c) the file still loads via loadDocsTokenLayer with the new value.
+    let layer = loadDocsTokenLayer(readFile(path))
+    var found = false
+    for (name, binding) in layer.vars:
+      if name == "--docs-accent":
+        check binding.light == "#123456"
+        found = true
+    check found
+
+    # (d) $description + fontFaces prelude are byte-preserved.
+    let od = parseJson(orig); let nd = parseJson(readFile(path))
+    check nd["$description"] == od["$description"]
+    check nd["fontFaces"] == od["fontFaces"]
+
+  test "raw-text patch preserves formatting: exactly one text line changes":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let orig = readFile(path)
+    discard applyDocsTokenEdit(path, "--docs-accent", "#123456", side = "light")
+    let patched = readFile(path)
+
+    let origLines = orig.splitLines
+    let patchedLines = patched.splitLines
+    check origLines.len == patchedLines.len
+    var diffLines: seq[int]
+    for i in 0 ..< origLines.len:
+      if origLines[i] != patchedLines[i]: diffLines.add i
+    check diffLines.len == 1
+    check patchedLines[diffLines[0]].contains("--docs-accent")
+    check patchedLines[diffLines[0]].contains("#123456")
+    # A sibling that ALSO happened to be #4168cc (--docs-link) is untouched.
+    check sideLiteral(patched, "--docs-link", "light") == "#4168cc"
+
+  test "a size/spacing edit round-trips the same way":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let before = docsSideLeaves(readFile(path))
+
+    let res = applyDocsTokenEdit(path, "--docs-space-4", "1.25rem", side = "light")
+    check res.written
+
+    let after = docsSideLeaves(readFile(path))
+    var changedKeys: seq[string]
+    for k, v in before:
+      if after[k] != v: changedKeys.add k
+    check changedKeys == @["--docs-space-4.light"]
+    check sideLiteral(readFile(path), "--docs-space-4", "light") == "1.25rem"
+
+  test "a dark-side edit patches only the dark literal":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let before = docsSideLeaves(readFile(path))
+    discard applyDocsTokenEdit(path, "--docs-accent", "#654321", side = "dark")
+    let after = docsSideLeaves(readFile(path))
+    var changedKeys: seq[string]
+    for k, v in before:
+      if after[k] != v: changedKeys.add k
+    check changedKeys == @["--docs-accent.dark"]
+    check sideLiteral(readFile(path), "--docs-accent", "dark") == "#654321"
+
+  test "hot-reload content: emitTokensCss over the reloaded file shows the edit":
+    # This is exactly what the dev server's tokensCssProvider (docsTokensCssLive)
+    # runs per request + on file change -- reload the file, re-emit its CSS.
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    discard applyDocsTokenEdit(path, "--docs-accent", "#123456", side = "light")
+    let ts = designSystemTokens()
+    let css = emitTokensCss(loadDocsTokenLayer(readFile(path)), ts)
+    check css.contains("--docs-accent: #123456;")
+
+  test "editor edit path: a SourceEditPlan persists to the docs token file":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let tokens = dtcgFoundationTokens(isonimDocsTokenLayer(), designSystemTokens())
+    # A plan as `editFoundationToken` emits for --docs-accent (a literal var).
+    let plan = SourceEditPlan(
+      property: "--docs-accent", tokenName: "--docs-accent",
+      newValue: "#0f0f0f", planKind: cspTokenUpdate)
+    check docsVarForPlan(plan) == "--docs-accent"
+
+    let res = applyDocsTokenEdit(path, plan)
+    check res.written
+    check sideLiteral(readFile(path), "--docs-accent", "light") == "#0f0f0f"
+    let css = emitTokensCss(loadDocsTokenLayer(readFile(path)), designSystemTokens())
+    check css.contains("--docs-accent: #0f0f0f;")
+
+  test "guard: a non-existent var is rejected and the file is byte-identical":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let orig = readFile(path)
+    var raised = false
+    try:
+      discard applyDocsTokenEdit(path, "--docs-does-not-exist", "#000000")
+    except DtcgWriteError:
+      raised = true
+    check raised
+    check readFile(path) == orig                       # untouched on disk
+
+  test "guard: a bad side is rejected and the file is byte-identical":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let orig = readFile(path)
+    var raised = false
+    try:
+      discard applyDocsTokenEdit(path, "--docs-accent", "#000000", side = "sepia")
+    except DtcgWriteError:
+      raised = true
+    check raised
+    check readFile(path) == orig
+
+  test "guard: a token-bound side (no literal) is rejected, file byte-identical":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let orig = readFile(path)
+    # --docs-focus-ring binds by {"token": "colors.blue.500"}, not a literal.
+    var raised = false
+    try:
+      discard applyDocsTokenEdit(path, "--docs-focus-ring", "#000000")
+    except DtcgWriteError:
+      raised = true
+    check raised
+    check readFile(path) == orig
+
+  test "dry-run / export returns content without writing":
+    let path = mkDocsCopy()
+    defer: removeDir(path.parentDir)
+    let orig = readFile(path)
+    let res = applyDocsTokenEdit(path, "--docs-accent", "#abcabc", dryRun = true)
+    check res.dryRun
+    check not res.written
+    check res.changed
+    check "\"#abcabc\"" in res.newText
+    check readFile(path) == orig                       # disk untouched

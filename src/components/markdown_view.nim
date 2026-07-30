@@ -46,7 +46,16 @@ const
     ## M9: the typed fallback node for an unknown/unregistered component tag
   # metacraft-theme-parity M2: content components (cards / hero / button / faq).
   cardGridClass* = "docs-md-card-grid"
+  cardGridCompactClass* = "docs-md-card-grid--compact"
+    ## metacraft-theme-parity M6: added ALONGSIDE `cardGridClass` on a
+    ## `:::cards variant="compact"` grid (the WebFlow popular-article-card
+    ## look). A default `:::cards` grid never carries it, so it stays
+    ## byte-for-byte the pre-M6 `class="docs-md-card-grid"`.
   cardClass* = "docs-md-card"
+  cardCompactClass* = "docs-md-card--compact"
+    ## metacraft-theme-parity M6: added ALONGSIDE `cardClass` on each card of a
+    ## compact grid, so the theme can restyle the card title (WebFlow
+    ## `.display-xs`) without touching the default card look.
   cardIconClass* = "docs-md-card-icon"
   cardBodyClass* = "docs-md-card-body"
   cardTitleClass* = "docs-md-card-title"
@@ -67,6 +76,32 @@ proc buttonClasses*(variant: string): string =
   ## variant adds `docs-md-button-secondary` alongside the base class.
   if variant == "secondary": buttonClass & " " & buttonSecondaryClass
   else: buttonClass
+
+proc cardGridClasses*(variant: string): string =
+  ## metacraft-theme-parity M6: the class attribute for a `:::cards` grid
+  ## container. A "compact" grid adds `docs-md-card-grid--compact` alongside
+  ## the base class; any other/empty variant is exactly `docs-md-card-grid`
+  ## (byte-for-byte the pre-M6 output).
+  if variant == "compact": cardGridClass & " " & cardGridCompactClass
+  else: cardGridClass
+
+proc cardClasses*(variant: string): string =
+  ## metacraft-theme-parity M6: the class attribute for one card inside a
+  ## `:::cards` grid. A "compact" grid's cards add `docs-md-card--compact`;
+  ## any other/empty variant is exactly `docs-md-card`.
+  if variant == "compact": cardClass & " " & cardCompactClass
+  else: cardClass
+
+proc pageHasHero*(blocks: seq[Block]): bool =
+  ## metacraft-theme-parity M6: true when a page's block list contains a
+  ## `:::hero`. A hero marks a landing page, which the page frame renders in a
+  ## WIDER content container and WITHOUT the adjacent-pages (prev/next) pager
+  ## -- both derived identically from `blocks` on the SSR-string and
+  ## MockRenderer/browser paths, so the two stay in lock-step (no hydration
+  ## divergence). A page with no hero (every normal article) is untouched.
+  for b in blocks:
+    if b.kind == bkHero: return true
+  false
 
 proc tokenClass(kind: TokenKind): string =
   ## Theme-aware token span classes: `assets/style.css` maps each of
@@ -260,10 +295,10 @@ proc renderCardGrid*[R, E](r: R; blk: Block): E =
   ## keyboard/focus-accessible `<a>` with an optional icon chip, a title,
   ## and a description built from the card's body paragraphs.
   let grid = r.createElement("div")
-  r.setAttribute(grid, "class", cardGridClass)
+  r.setAttribute(grid, "class", cardGridClasses(blk.gridVariant))
   for card in blk.cards:
     let a = r.createElement("a")
-    r.setAttribute(a, "class", cardClass)
+    r.setAttribute(a, "class", cardClasses(blk.gridVariant))
     r.setAttribute(a, "href", card.href)
     if card.icon.len > 0:
       let iconWrap = r.createElement("div")
@@ -535,9 +570,9 @@ proc renderButtonSpecHtml*(spec: ButtonSpec): string =
 
 proc renderCardGridHtml*(blk: Block): string =
   ## SSR counterpart to `renderCardGrid`.
-  result = "<div class=\"" & cardGridClass & "\">"
+  result = "<div class=\"" & cardGridClasses(blk.gridVariant) & "\">"
   for card in blk.cards:
-    result.add "<a class=\"" & cardClass & "\" href=\"" & escapeAttr(card.href) & "\">"
+    result.add "<a class=\"" & cardClasses(blk.gridVariant) & "\" href=\"" & escapeAttr(card.href) & "\">"
     if card.icon.len > 0:
       result.add "<div class=\"" & cardIconClass & "\"><img src=\"" &
         escapeAttr(card.icon) & "\" alt=\"\" /></div>"

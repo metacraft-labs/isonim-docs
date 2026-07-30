@@ -66,6 +66,13 @@ const
   headerClass* = "docs-header"
   navClass* = "docs-nav"
   mainClass* = "docs-main"
+  mainWideClass* = "docs-main--wide"
+    ## metacraft-theme-parity M6: added ALONGSIDE `mainClass` on a LANDING page
+    ## (one whose body contains a `:::hero`, per `markdown_view.pageHasHero`) so
+    ## the theme can give the landing a WIDER content column than a normal
+    ## article -- a purely additive class the consumer's CSS opts into; a
+    ## consumer that never styles it sees no change. A normal (non-hero) page's
+    ## `<main>` stays exactly `class="docs-main"`.
   footerClass* = "docs-footer"
   notFoundClass* = "docs-not-found"
   redirectClass* = "docs-redirect"

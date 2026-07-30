@@ -211,7 +211,7 @@ when not defined(js):
 
 import std/[strutils, unittest]
 
-import isonim/core/signals
+import isonim/core/[signals, computation]
 import isonim/editor
 import core/tokens
 import ../../src/theme_tokens
@@ -295,3 +295,196 @@ suite "Metacraft workspace: live editor mount + preview (M1)":
     check item.key == "--docs-accent"
     check item.minContrast == 4.5
     check item.contrastRatio > 0.0
+
+proc foundationKeys(vm: EditorVM): seq[string] =
+  ## The keys of the tokens the foundations view currently surfaces, via the
+  ## real EditorVM foundation view model (``filteredTokens``).
+  for t in vm.foundations.filteredTokens.val:
+    result.add t.key
+
+suite "Metacraft workspace: distinct foundation views (M2)":
+
+  test "Typography story surfaces font/size tokens, not spacing or colours":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let vm = createEditorVM(ws)
+    check vm.selectStory(StoryFoundType)
+    let keys = foundationKeys(vm)
+    check keys.len > 0
+    # Font stack, sizes and line-height are present.
+    check "--docs-font-sans" in keys
+    check "--docs-font-mono" in keys
+    check "--docs-font-size-base" in keys
+    check "--docs-line-height" in keys
+    # Spacing, radii and colour tokens are hidden.
+    check "--docs-space-4" notin keys
+    check "--docs-radius-md" notin keys
+    check "--docs-accent" notin keys
+    check "--docs-bg" notin keys
+
+  test "Spacing & Radii story surfaces space/radius/width, not colours or fonts":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let vm = createEditorVM(ws)
+    check vm.selectStory(StoryFoundSpace)
+    let keys = foundationKeys(vm)
+    check "--docs-space-4" in keys
+    check "--docs-radius-md" in keys
+    check "--docs-sidebar-width" in keys       # ftkBreakpoint (a width)
+    # Colours and fonts are hidden.
+    check "--docs-accent" notin keys
+    check "--docs-bg" notin keys
+    check "--docs-font-sans" notin keys
+    check "--docs-line-height" notin keys
+
+  test "Colors story surfaces colour tokens, not fonts or spacing":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let vm = createEditorVM(ws)
+    check vm.selectStory(StoryFoundColors)
+    let keys = foundationKeys(vm)
+    check "--docs-accent" in keys
+    check "--docs-bg" in keys
+    check "--docs-focus-ring" in keys          # ftkSemanticColor (aliased)
+    # Fonts, spacing and radii are hidden.
+    check "--docs-font-sans" notin keys
+    check "--docs-space-4" notin keys
+    check "--docs-radius-md" notin keys
+
+  test "the three foundation stories render DISTINCT token sets":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let vm = createEditorVM(ws)
+    check vm.selectStory(StoryFoundColors)
+    let colors = foundationKeys(vm)
+    check vm.selectStory(StoryFoundType)
+    let typography = foundationKeys(vm)
+    check vm.selectStory(StoryFoundSpace)
+    let spacing = foundationKeys(vm)
+    # No overlap between any pair, and each is non-empty.
+    check colors.len > 0
+    check typography.len > 0
+    check spacing.len > 0
+    for k in typography:
+      check k notin colors
+      check k notin spacing
+    for k in spacing:
+      check k notin colors
+
+  test "backward compatible: an undeclared foundation story keeps legacy filtering":
+    # A pilot whose single "Colors" foundation story declares NO category
+    # scope must render exactly as before: selecting it imposes no scope and
+    # the in-page category buttons still drive `selectedCategory`.
+    let legacyGroups = @[
+      StoryGroup(name: "Foundations", kind: skFoundation, expanded: true,
+        items: @[
+          StoryItem(name: "Colors", description: "All design tokens",
+            kind: skFoundation, group: "Foundations")])]  # no foundationCategories
+    let legacyTokens = @[
+      FoundationTokenEntry(key: "--c1", kind: ftkColorPalette, value: "#fff",
+        property: "--c1"),
+      FoundationTokenEntry(key: "--t1", kind: ftkTypographyScale, value: "1rem",
+        property: "--t1")]
+    let ws = newEditorWorkspace(title = "Legacy", storyGroups = legacyGroups,
+      foundationTokens = legacyTokens, initialView = evFoundationsPage)
+    let vm = createEditorVM(ws)
+    check vm.selectStory(
+      StoryRef(group: "Foundations", name: "Colors", kind: skFoundation))
+    # No scope was imposed by the story.
+    check vm.foundations.storyCategories.val == {}
+    # Legacy single-category filtering (default ftkColorPalette) is intact.
+    check "--c1" in foundationKeys(vm)
+    check "--t1" notin foundationKeys(vm)
+    # ...and switching category via the in-page rail still works.
+    discard vm.setFoundationCategory(ftkTypographyScale)
+    check "--t1" in foundationKeys(vm)
+    check "--c1" notin foundationKeys(vm)
+
+proc previewBody(html: string): string =
+  ## The `<body>` markup of a pbWeb preview document. The full document
+  ## embeds the ENTIRE docs stylesheet in `<head>` (whose CSS selectors
+  ## mention every `docs-*` class name), so asserting a class marker against
+  ## the whole document would be a trivial false-positive for EVERY story.
+  ## Extracting the body isolates the component markup the story actually
+  ## RENDERED, which is what the M3 fix produces (and what was blank before).
+  let i = html.find("<body>")
+  let j = html.find("</body>")
+  if i < 0 or j < 0: return ""
+  html[i + "<body>".len ..< j]
+
+proc storyBody(ws: EditorWorkspace; story: StoryRef): string =
+  previewBody(ws.previewHook(story, pbWeb).documentHtml)
+
+suite "Metacraft workspace: component preview rendering (M3)":
+  ## Before the M3 fix each of these previews was BLANK: the docs preview
+  ## hook only populated `bodyText` (a token dump) and never `documentHtml`,
+  ## the Web preview seam the editor mounts in-iframe via `srcdoc`. With
+  ## empty `documentHtml`, `previewBody` returns "" and every marker check
+  ## below fails -- that is the red. The fix supplies real docs-component
+  ## HTML per story, themed by the live `--docs-*` tokens.
+
+  test "Docs Shell full page renders a composed docs page (not blank)":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let body = storyBody(ws, StoryShell)
+    check body.len > 0
+    check "docs-frame" in body        # the page frame wrapper
+    check "docs-header" in body       # header chrome
+    check "docs-nav-sidebar" in body  # sidebar navigation
+    check "docs-main" in body         # markdown main region
+    check "docs-md-heading" in body   # real rendered markdown headings
+
+  test "Navigation / Sidebar nav renders the real nav tree":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let body = storyBody(ws, StoryNavSidebar)
+    check body.len > 0
+    check "docs-nav-sidebar" in body
+    check "docs-nav-item" in body     # actual nav links
+    check "docs-frame" notin body     # just the nav, not the whole page
+
+  test "Navigation / Top nav renders the header bar":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let body = storyBody(ws, StoryNavTop)
+    check body.len > 0
+    check "docs-header" in body
+    check "docs-search" in body
+
+  test "Markdown Body stories render real markdown chrome":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    for st in [StoryProse, StoryCode]:
+      let body = storyBody(ws, st)
+      check body.len > 0
+      check "docs-md-body" in body
+      check "docs-md-heading" in body
+    # the Code-block story emits a real fenced code block.
+    check "docs-md-code-fence" in storyBody(ws, StoryCode)
+
+  test "Admonition stories render the severity callout":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    for (st, kindCls) in [(StoryAdNote, "docs-md-admonition-note"),
+                          (StoryAdTip, "docs-md-admonition-tip"),
+                          (StoryAdWarn, "docs-md-admonition-warning"),
+                          (StoryAdDanger, "docs-md-admonition-danger")]:
+      let body = storyBody(ws, st)
+      check body.len > 0
+      check "docs-md-admonition" in body
+      check kindCls in body
+
+  test "Search story renders the search box":
+    let ws = metacraftEditorWorkspace(layer, ts)
+    let body = storyBody(ws, StorySearch)
+    check body.len > 0
+    check "docs-search" in body
+    check "docs-search-input" in body
+
+  test "component previews re-theme from the live --docs-* tokens":
+    # The preview document carries a `:root { --docs-*: <live> }` block built
+    # from the current foundation tokens, so an in-editor edit re-themes the
+    # rendered component -- the same live-token contract the M1 preview test
+    # exercises, now applied to the real component markup.
+    var vm: EditorVM
+    let ws = metacraftEditorWorkspace(layer, ts,
+      tokensAccessor = proc(): seq[FoundationTokenEntry] =
+        if vm.isNil: @[] else: vm.foundations.tokens.val)
+    vm = createEditorVM(ws)
+    let before = ws.previewHook(StoryShell, pbWeb).documentHtml
+    check before.len > 0
+    check "--docs-accent:#ff0000" notin before
+    check vm.editFoundationToken("--docs-accent", "#ff0000").status == pesAccepted
+    let after = ws.previewHook(StoryShell, pbWeb).documentHtml
+    check "--docs-accent:#ff0000" in after

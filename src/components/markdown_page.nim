@@ -51,17 +51,24 @@ proc renderMarkdownPage*[R, E](r: R; pageTitle: string; blocks: seq[Block];
   r.appendChild(navEl, renderNavigation[R, E](r, navigation))
   r.appendChild(frame, navEl)
 
+  ## metacraft-theme-parity M6: a LANDING page (its body carries a `:::hero`)
+  ## gets the wider content column (`mainWideClass`) and DROPS the prev/next
+  ## pager -- a landing is not part of a linear article sequence, and the
+  ## WebFlow home has none. Derived from `blocks` so this path and the
+  ## SSR-string one stay byte-identical. A normal (non-hero) page is untouched.
+  let landing = pageHasHero(blocks)
   let mainEl = r.createElement("main")
   r.setAttribute(mainEl, "id", regionId(prMain))
-  r.setAttribute(mainEl, "class", mainClass)
+  r.setAttribute(mainEl, "class", if landing: mainClass & " " & mainWideClass else: mainClass)
   r.setAttribute(mainEl, "tabindex", "-1")
   r.appendChild(mainEl, renderMarkdownBody[R, E](r, blocks))
   r.appendChild(frame, mainEl)
 
   ## Prev/next pagination sits at the BOTTOM of the content column (a sibling
   ## after `.docs-main`), matching normal docs UX, rather than inside the nav
-  ## region above the H1.
-  r.appendChild(frame, renderAdjacent[R, E](r, navigation.previous, navigation.next))
+  ## region above the H1 -- but never on a landing page (see above).
+  if not landing:
+    r.appendChild(frame, renderAdjacent[R, E](r, navigation.previous, navigation.next))
 
   let footerEl = r.createElement("footer")
   r.setAttribute(footerEl, "id", regionId(prFooter))
@@ -88,16 +95,23 @@ proc renderMarkdownPageHtml*(pageTitle: string; blocks: seq[Block];
   ## new hook (header nav, sidebar social + pill toggle, content `<h1>` +
   ## last-updated, need-help block) as nothing, so the page stays byte-for-byte
   ## pre-M1.
+  ## metacraft-theme-parity M6: a LANDING page (its body carries a `:::hero`)
+  ## renders the `<main>` with the extra `mainWideClass` (wider content column)
+  ## and OMITS the prev/next pager -- kept in lock-step with the MockRenderer
+  ## `renderMarkdownPage` above by deriving both from `blocks`. A normal
+  ## (non-hero) page's `<main>` and pager are byte-for-byte the pre-M6 markup.
+  let landing = pageHasHero(blocks)
+  let mainCls = if landing: mainClass & " " & mainWideClass else: mainClass
   "<div class=\"" & frameClass & "\">" &
     renderSkipLinkHtml() &
     renderDocsHeaderHtml(pageTitle, search, theme, siteLogo, logoHref, chrome) &
     "<nav id=\"" & regionId(prNav) & "\" class=\"" & navClass & "\">" &
       renderNavigationHtml(navigation, renderSidebarExtrasHtml(chrome, theme)) & "</nav>" &
-    "<main id=\"" & regionId(prMain) & "\" class=\"" & mainClass & "\" tabindex=\"-1\">" &
+    "<main id=\"" & regionId(prMain) & "\" class=\"" & mainCls & "\" tabindex=\"-1\">" &
       renderContentTitleHtml(pageTitle, chrome) &
       renderMarkdownBodyHtml(blocks) &
     "</main>" &
-    renderAdjacentHtml(navigation.previous, navigation.next) &
+    (if landing: "" else: renderAdjacentHtml(navigation.previous, navigation.next)) &
     renderNeedHelpHtml(chrome) &
     renderDocsFooterHtml(footerHtml) &
     renderSearchOverlayHtml(SearchViewModel()) &

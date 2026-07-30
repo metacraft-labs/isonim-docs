@@ -178,6 +178,14 @@ type
       ## metacraft-theme-parity M2: the parsed `:::card` items, in author
       ## order. Empty `cards` renders an empty grid container.
       cards*: seq[CardItem]
+      gridVariant*: string ## metacraft-theme-parity M6: the `:::cards
+                           ## variant="…"` modifier. "" (the default, and any
+                           ## unrecognized value) renders the standard
+                           ## category-card grid exactly as pre-M6 -- so
+                           ## `:::cards` without a variant is byte-unchanged.
+                           ## "compact" selects the WebFlow popular-article-card
+                           ## look (a distinct `docs-md-card-grid--compact` /
+                           ## `docs-md-card--compact` class the theme styles).
     of bkHero:
       ## metacraft-theme-parity M2: the hero's title/subtitle text and its
       ## ordered action buttons.
@@ -567,6 +575,13 @@ proc normalizeVariant(v: string): string =
   ## default) -- any other/absent value normalizes to "primary".
   if v.strip().toLowerAscii() == "secondary": "secondary" else: "primary"
 
+proc normalizeCardVariant(v: string): string =
+  ## metacraft-theme-parity M6: a `:::cards` grid is either the default
+  ## category-card look ("" -- the pre-M6 behaviour) or the "compact"
+  ## WebFlow popular-article-card look. Any other/absent value normalizes to
+  ## "" so an existing (or typo'd) `:::cards` renders byte-for-byte as today.
+  if v.strip().toLowerAscii() == "compact": "compact" else: ""
+
 proc parseCardItems(bodyLines: seq[string]; sourceRelPath: string;
                     resolveContentPath: proc(contentRelPath: string): string {.closure.};
                     resolveSymbol: proc(sym: string): string {.closure.}): seq[CardItem] =
@@ -720,6 +735,7 @@ proc parseMarkdownBlocks*(body: string; sourceRelPath: string = "";
     ## matching bare `:::` closer. Every one emits nothing unless authored,
     ## so the framework default output is unchanged.
     if stripped.startsWith(":::") and directiveName(stripped) == "cards":
+      let gridProps = parseComponentProps(directiveArgs(stripped))
       inc i
       var bodyLines: seq[string] = @[]
       while i < lines.len and lines[i].strip() != ":::":
@@ -727,7 +743,8 @@ proc parseMarkdownBlocks*(body: string; sourceRelPath: string = "";
         inc i
       if i < lines.len: inc i
       result.add Block(kind: bkCardGrid,
-        cards: parseCardItems(bodyLines, sourceRelPath, resolveContentPath, resolveSymbol))
+        cards: parseCardItems(bodyLines, sourceRelPath, resolveContentPath, resolveSymbol),
+        gridVariant: normalizeCardVariant(gridProps.getStr("variant")))
       continue
 
     if stripped.startsWith(":::") and directiveName(stripped) == "hero":
