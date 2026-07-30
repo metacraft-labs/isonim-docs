@@ -105,6 +105,36 @@ suite "docs content components -- parsing (Tier 1, dual-target)":
     check blocks[0].faqItems[1].question == "Which languages?"
     check spansText(blocks[0].faqItems[1].answer[0]) == "Noir, Ruby and more."
 
+  test "M3: :::video parses a bare YouTube id into a bkVideo":
+    let blocks = parseMarkdownBlocks(":::video xZsJ55JVqmU")
+    check blocks.len == 1
+    check blocks[0].kind == bkVideo
+    check blocks[0].videoId == "xZsJ55JVqmU"
+    check blocks[0].videoSrc == ""
+
+  test "M3: :::video extracts the id from watch / youtu.be / embed URLs and reads title=":
+    check parseMarkdownBlocks(
+      ":::video https://www.youtube.com/watch?v=xZsJ55JVqmU&t=1")[0].videoId == "xZsJ55JVqmU"
+    check parseMarkdownBlocks(":::video https://youtu.be/xZsJ55JVqmU")[0].videoId == "xZsJ55JVqmU"
+    check parseMarkdownBlocks(
+      ":::video https://www.youtube.com/embed/xZsJ55JVqmU")[0].videoId == "xZsJ55JVqmU"
+    let titled = parseMarkdownBlocks(":::video xZsJ55JVqmU title=\"Noir Demo\"")[0]
+    check titled.videoId == "xZsJ55JVqmU"
+    check titled.videoTitle == "Noir Demo"
+
+  test "M3: :::video src=\"...\" overrides the id and is used verbatim":
+    let blk = parseMarkdownBlocks(":::video src=\"https://example.com/e/abc\" title=\"X\"")[0]
+    check blk.kind == bkVideo
+    check blk.videoSrc == "https://example.com/e/abc"
+    check videoEmbedSrc(blk) == "https://example.com/e/abc"
+
+  test "M3: an empty / bogus :::video is handled safely (no id, no crash)":
+    let empty = parseMarkdownBlocks(":::video")
+    check empty.len == 1
+    check empty[0].kind == bkVideo
+    check empty[0].videoId == ""
+    check videoEmbedSrc(empty[0]) == ""
+
   test "components parse alongside other blocks in document order":
     let raw = "Intro paragraph.\n\n:::button href=\"x.md\"\nGo\n:::\n\nAfter."
     let blocks = parseMarkdownBlocks(raw)
@@ -121,7 +151,7 @@ suite "docs content components -- framework default is unchanged (Tier 1, dual-t
       "- one\n- two\n\n:::note\nAn admonition.\n:::\n\n" &
       "```nim\nlet x = 1\n```\n"
     for blk in parseMarkdownBlocks(raw):
-      check blk.kind notin {bkCardGrid, bkHero, bkButton, bkFaq}
+      check blk.kind notin {bkCardGrid, bkHero, bkButton, bkFaq, bkVideo}
 
   test "a plain markdown page renders NONE of the component markup (SSR)":
     let raw = "## Heading\n\nA paragraph.\n\n- one\n- two\n\n:::tip\nTip.\n:::\n"
@@ -130,6 +160,7 @@ suite "docs content components -- framework default is unchanged (Tier 1, dual-t
     check not html.contains("docs-md-hero")
     check not html.contains("docs-md-faq")
     check not html.contains("docs-md-button")
+    check not html.contains("docs-md-video")
 
   test "a plain markdown page renders NONE of the component markup (MockRenderer)":
     let raw = "## Heading\n\nA paragraph.\n\n:::warning\nCareful.\n:::\n"
@@ -209,6 +240,28 @@ suite "docs content components -- MockRenderer rendering (Tier 2, dual-target)":
     check getAttribute(r, a, "href") == "a.md"
     check textContent(a) == "Support"
 
+  test "M3: video renders a docs-md-video wrapper with a youtube-nocookie iframe":
+    let r = MockRenderer()
+    let root = renderMarkdownBody[MockRenderer, MockNode](r,
+      parseMarkdownBlocks(":::video xZsJ55JVqmU title=\"Noir Demo\""))
+    let wrap = findWhere(root, proc(n: MockNode): bool =
+      n.kind == mnkElement and getAttribute(r, n, "class") == videoClass)
+    require wrap != nil
+    let frame = findByTag(wrap, "iframe")
+    require frame != nil
+    check getAttribute(r, frame, "src") ==
+      "https://www.youtube-nocookie.com/embed/xZsJ55JVqmU"
+    check getAttribute(r, frame, "title") == "Noir Demo"
+    check getAttribute(r, frame, "allowfullscreen") == "allowfullscreen"
+
+  test "M3: an empty :::video renders the wrapper but NO iframe (MockRenderer)":
+    let r = MockRenderer()
+    let root = renderMarkdownBody[MockRenderer, MockNode](r, parseMarkdownBlocks(":::video"))
+    let wrap = findWhere(root, proc(n: MockNode): bool =
+      n.kind == mnkElement and getAttribute(r, n, "class") == videoClass)
+    require wrap != nil
+    check findByTag(wrap, "iframe") == nil
+
   test "faq renders each item as a native <details>/<summary> disclosure":
     let raw = ":::faq\n:::q title=\"Q one?\"\nAnswer one.\n:::q title=\"Q two?\"\nAnswer two.\n:::"
     let r = MockRenderer()
@@ -271,6 +324,34 @@ suite "docs content components -- SSR string rendering (Tier 2, dual-target)":
     check html.contains("<details class=\"" & faqItemClass & "\">")
     check html.contains("<summary class=\"" & faqQuestionClass & "\">Q one?</summary>")
     check html.contains("Answer one.")
+
+  test "M3: video serializes a docs-md-video wrapper + youtube-nocookie iframe":
+    let html = renderMarkdownBodyHtml(parseMarkdownBlocks(
+      ":::video xZsJ55JVqmU title=\"Noir Demo\""))
+    check html.contains("<div class=\"" & videoClass & "\">")
+    check html.contains("class=\"" & videoFrameClass &
+      "\" src=\"https://www.youtube-nocookie.com/embed/xZsJ55JVqmU\"")
+    check html.contains("title=\"Noir Demo\"")
+    check html.contains("allowfullscreen")
+    # An empty/bogus directive serializes the wrapper with no iframe.
+    let emptyHtml = renderMarkdownBodyHtml(parseMarkdownBlocks(":::video"))
+    check emptyHtml.contains("<div class=\"" & videoClass & "\">")
+    check not emptyHtml.contains("<iframe")
+
+  test "M3: a malicious :::video id is attribute-escaped and cannot break out":
+    # A hostile id carrying a quote + markup must not break out of the `src`
+    # attribute: the quote is escaped to `&quot;`, so the injected `<script>`
+    # text stays trapped (inert) inside the single `src` value rather than
+    # becoming a real element. (The literal `<script>` text may appear inside
+    # the attribute value -- that is safe; what must never happen is a raw `"`
+    # closing the attribute and starting a tag.)
+    let html = renderMarkdownBodyHtml(parseMarkdownBlocks(
+      ":::video x\"><script>alert(1)</script>"))
+    check html.contains("src=\"https://www.youtube-nocookie.com/embed/x&quot;")
+    check not html.contains("embed/x\"")   # the raw quote never survives unescaped
+    check not html.contains("\"><script")  # no attribute breakout into a real tag
+    # The output carries exactly one tag beyond the wrapper div: the iframe.
+    check html.split("<iframe").len == 2
 
   test "card title, hero title and faq question are HTML-escaped":
     let cardsHtml = renderMarkdownBodyHtml(parseMarkdownBlocks(

@@ -179,6 +179,31 @@ type
                      ## `heading` + empty `links` (the framework default) -> the
                      ## block is not emitted at all, so the page is byte-for-byte
                      ## the pre-M1 markup unless a consumer sets it.
+    appScriptHref*: string
+                     ## M1 (client-JS bundle): OPTIONAL src of the compiled
+                     ## client-side app bundle (the `nim js` build of a
+                     ## consumer's own `main*.nim` mount entry). Empty by the
+                     ## framework default (`docsConfig()`), so no `<script>` is
+                     ## injected and the SSR/SSG head is byte-for-byte the
+                     ## pre-M1 markup. When set, `shell.renderSecureDocumentHeadHtml`
+                     ## injects a single `<script src="..." defer></script>` into
+                     ## `<head>` on EVERY page (SSR, dev, and SSG), making the
+                     ## page interactive as PROGRESSIVE ENHANCEMENT -- the SSR
+                     ## HTML stays complete/valid without it. `buildSite`, when
+                     ## given a `clientEntry`, compiles that entry to
+                     ## `assets/app.js` and the asset-hash pass rewrites this
+                     ## placeholder to the content-hashed filename, exactly like
+                     ## the stylesheet + search-index hrefs.
+    expandAllNavSections*: bool
+                     ## M1 (robust no-JS nav): when `true`, EVERY sidebar
+                     ## section renders default-expanded (WebFlow shows all its
+                     ## top-level blocks open), so the real `<a>` links are
+                     ## visible and navigable on a plain page load even before /
+                     ## without the client JS -- and JS click-to-collapse stays
+                     ## an enhancement on top. `false` (the framework default)
+                     ## keeps the pre-M1 behaviour: only the active route's
+                     ## ancestor sections auto-expand, so on a section-less home
+                     ## page every named section is collapsed.
 
 const
   defaultSearchEndpoint* = "/api/search"
@@ -190,6 +215,11 @@ const
     ## The default keystroke-coalescing window (ms) before a server search
     ## request fires -- long enough that fast typing sends one request, not
     ## one per character, short enough to feel live.
+  defaultAppScriptUrl* = "/assets/app.js"
+    ## The placeholder src `buildSite` sets on `DocsConfig.appScriptHref` when
+    ## a `clientEntry` is compiled but the consumer left `appScriptHref`
+    ## unset. The asset-hash pass rewrites it to the content-hashed
+    ## `/assets/app.<hash>.js`, exactly like `search_view.defaultSearchIndexUrl`.
 
 proc defaultServerSearchConfig*(): ServerSearchConfig =
   ## The framework's content-agnostic search-toggle default: the

@@ -70,6 +70,9 @@ const
   faqItemClass* = "docs-md-faq-item"
   faqQuestionClass* = "docs-md-faq-question"
   faqAnswerClass* = "docs-md-faq-answer"
+  # metacraft-theme-parity M3: `:::video` responsive embed (WebFlow `.w-video`).
+  videoClass* = "docs-md-video"
+  videoFrameClass* = "docs-md-video-frame"
 
 proc buttonClasses*(variant: string): string =
   ## The class attribute for an action button; the secondary (white)
@@ -91,6 +94,20 @@ proc cardClasses*(variant: string): string =
   ## any other/empty variant is exactly `docs-md-card`.
   if variant == "compact": cardClass & " " & cardCompactClass
   else: cardClass
+
+proc videoEmbedSrc*(blk: Block): string =
+  ## metacraft-theme-parity M3: the iframe source for a `bkVideo` block -- an
+  ## explicit `videoSrc` verbatim when set, else a privacy-friendly
+  ## youtube-nocookie embed built from the resolved `videoId`, else "" (an
+  ## empty/bogus directive), which the renderers treat as "emit no iframe".
+  if blk.videoSrc.len > 0: blk.videoSrc
+  elif blk.videoId.len > 0: "https://www.youtube-nocookie.com/embed/" & blk.videoId
+  else: ""
+
+proc videoTitleOf(blk: Block): string =
+  ## The a11y `title` for a video iframe -- the authored `videoTitle`, or a
+  ## generic fallback so the frame is never title-less.
+  if blk.videoTitle.len > 0: blk.videoTitle else: "Embedded video"
 
 proc pageHasHero*(blocks: seq[Block]): bool =
   ## metacraft-theme-parity M6: true when a page's block list contains a
@@ -369,6 +386,29 @@ proc renderFaq*[R, E](r: R; blk: Block): E =
     r.appendChild(wrap, details)
   wrap
 
+proc renderVideo*[R, E](r: R; blk: Block): E =
+  ## metacraft-theme-parity M3: a responsive video embed -- a `docs-md-video`
+  ## wrapper (CSS gives it the WebFlow 16:9 aspect box) holding a lazy,
+  ## fullscreen-capable YouTube-nocookie iframe. An empty/bogus directive
+  ## (no id and no src) renders just the safe empty wrapper, never a broken
+  ## iframe.
+  let wrap = r.createElement("div")
+  r.setAttribute(wrap, "class", videoClass)
+  let src = videoEmbedSrc(blk)
+  if src.len > 0:
+    let frame = r.createElement("iframe")
+    r.setAttribute(frame, "class", videoFrameClass)
+    r.setAttribute(frame, "src", src)
+    r.setAttribute(frame, "title", videoTitleOf(blk))
+    r.setAttribute(frame, "loading", "lazy")
+    r.setAttribute(frame, "frameborder", "0")
+    r.setAttribute(frame, "allow",
+      "accelerometer; encrypted-media; gyroscope; picture-in-picture")
+    r.setAttribute(frame, "referrerpolicy", "strict-origin-when-cross-origin")
+    r.setAttribute(frame, "allowfullscreen", "allowfullscreen")
+    r.appendChild(wrap, frame)
+  wrap
+
 proc renderMarkdownBlock*[R, E](r: R; blk: Block; idPath: string;
                                 registry: ComponentRegistry[R, E] = nil): E
 
@@ -472,6 +512,7 @@ proc renderMarkdownBlock*[R, E](r: R; blk: Block; idPath: string;
   of bkHero: renderHero[R, E](r, blk)
   of bkButton: renderButton[R, E](r, blk)
   of bkFaq: renderFaq[R, E](r, blk)
+  of bkVideo: renderVideo[R, E](r, blk)
 
 proc renderMarkdownBody*[R, E](r: R; blocks: seq[Block];
                                registry: ComponentRegistry[R, E] = nil): E =
@@ -611,6 +652,20 @@ proc renderFaqHtml*(blk: Block): string =
     result.add "</div></details>"
   result.add "</div>"
 
+proc renderVideoHtml*(blk: Block): string =
+  ## SSR counterpart to `renderVideo`: a `docs-md-video` wrapper holding a
+  ## lazy, fullscreen-capable YouTube-nocookie iframe. An empty/bogus
+  ## directive (no id and no src) serializes just the empty wrapper.
+  result = "<div class=\"" & videoClass & "\">"
+  let src = videoEmbedSrc(blk)
+  if src.len > 0:
+    result.add "<iframe class=\"" & videoFrameClass & "\" src=\"" & escapeAttr(src) &
+      "\" title=\"" & escapeAttr(videoTitleOf(blk)) &
+      "\" loading=\"lazy\" frameborder=\"0\" " &
+      "allow=\"accelerometer; encrypted-media; gyroscope; picture-in-picture\" " &
+      "referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>"
+  result.add "</div>"
+
 proc renderMarkdownBlockHtml*(blk: Block; idPath: string;
                               registry: HtmlComponentRegistry = nil): string
 
@@ -677,6 +732,7 @@ proc renderMarkdownBlockHtml*(blk: Block; idPath: string;
   of bkHero: renderHeroHtml(blk)
   of bkButton: renderButtonHtml(blk)
   of bkFaq: renderFaqHtml(blk)
+  of bkVideo: renderVideoHtml(blk)
 
 proc renderMarkdownBodyHtml*(blocks: seq[Block];
                              registry: HtmlComponentRegistry = nil): string =

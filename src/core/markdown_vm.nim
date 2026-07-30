@@ -92,6 +92,7 @@ type
     bkHero     ## metacraft-theme-parity M2: a `:::hero` (title + subtitle + buttons).
     bkButton   ## metacraft-theme-parity M2: a standalone `:::button` action link.
     bkFaq      ## metacraft-theme-parity M2: a `:::faq` accordion of `:::q` items.
+    bkVideo    ## metacraft-theme-parity M3: a `:::video` responsive embed.
 
   CardItem* = object
     ## metacraft-theme-parity M2: one `:::card title="…" icon="…" href="…"`
@@ -198,6 +199,16 @@ type
     of bkFaq:
       ## metacraft-theme-parity M2: the parsed `:::q` accordion items.
       faqItems*: seq[FaqItem]
+    of bkVideo:
+      ## metacraft-theme-parity M3: a responsive video embed. `videoId` is a
+      ## resolved YouTube id (rendered as a privacy-friendly
+      ## youtube-nocookie embed); `videoSrc` is an explicit iframe `src`
+      ## override (used verbatim when set); `videoTitle` is the iframe's a11y
+      ## title. When both id and src are empty the renderer emits a safe
+      ## empty wrapper (no iframe) rather than a broken embed.
+      videoId*: string
+      videoSrc*: string
+      videoTitle*: string
 
   HeadingNode* = object
     ## One node of the document's heading tree, nested by heading level
@@ -582,6 +593,70 @@ proc normalizeCardVariant(v: string): string =
   ## "" so an existing (or typo'd) `:::cards` renders byte-for-byte as today.
   if v.strip().toLowerAscii() == "compact": "compact" else: ""
 
+proc extractYouTubeId*(s: string): string =
+  ## metacraft-theme-parity M3: pulls the YouTube video id out of a bare id,
+  ## a `watch?v=` URL, a `youtu.be/` short URL, or an `/embed/` URL. A bare
+  ## (URL-less) token is returned as-is -- it is already an id; an
+  ## unrecognized URL yields "" so the renderer degrades to an empty wrapper
+  ## rather than a broken embed. Pure (no `std/uri`), so it is identical on
+  ## the C and JS targets.
+  let v = s.strip()
+  if v.len == 0: return ""
+  if v.contains("youtube.com") or v.contains("youtu.be") or
+     v.contains("youtube-nocookie.com"):
+    let vi = v.find("v=")
+    if vi >= 0:
+      var j = vi + 2
+      while j < v.len and v[j] notin {'&', '#'}: inc j
+      return v[vi + 2 ..< j]
+    for marker in ["/embed/", "youtu.be/", "/v/"]:
+      let mi = v.find(marker)
+      if mi >= 0:
+        let st = mi + marker.len
+        var j = st
+        while j < v.len and v[j] notin {'?', '&', '/', '#'}: inc j
+        return v[st ..< j]
+    return ""
+  v
+
+proc parseVideoDirective(args: string): tuple[id, src, title: string] =
+  ## metacraft-theme-parity M3: parses a `:::video` directive's arguments --
+  ## an optional leading bare token (a YouTube id or URL), plus optional
+  ## `src="..."` / `id="..."` / `title="..."` props. `src` (when given) is
+  ## used verbatim as the iframe source; otherwise the resolved id drives a
+  ## privacy-friendly youtube-nocookie embed. Malformed input never raises;
+  ## it degrades to empty fields.
+  var a = args.strip()
+  var bare = ""
+  if a.len > 0 and a[0] notin {'"', '\''}:
+    var sp = 0
+    while sp < a.len and a[sp] notin {' ', '\t'}: inc sp
+    let tok = a[0 ..< sp]
+    # A leading token is a bare id/URL unless it looks like a `name=value`
+    # prop -- i.e. the text before its first `=` is a valid attribute name.
+    # A URL (`https://...watch?v=ID`) contains `=` yet its pre-`=` segment
+    # holds `:`/`/`/`?`, so it is correctly treated as a bare arg.
+    var isProp = false
+    let eq = tok.find('=')
+    if eq > 0:
+      isProp = true
+      for ch in tok[0 ..< eq]:
+        if ch notin {'a' .. 'z', 'A' .. 'Z', '0' .. '9', '_', '-'}:
+          isProp = false
+          break
+    if not isProp:
+      bare = tok
+      a = a[sp .. ^1].strip()
+  let props = parseComponentProps(a)
+  let src = props.getStr("src")
+  let idProp = props.getStr("id")
+  let title = props.getStr("title")
+  let id =
+    if idProp.len > 0: extractYouTubeId(idProp)
+    elif bare.len > 0: extractYouTubeId(bare)
+    else: ""
+  (id, src, title)
+
 proc parseCardItems(bodyLines: seq[string]; sourceRelPath: string;
                     resolveContentPath: proc(contentRelPath: string): string {.closure.};
                     resolveSymbol: proc(sym: string): string {.closure.}): seq[CardItem] =
@@ -785,6 +860,16 @@ proc parseMarkdownBlocks*(body: string; sourceRelPath: string = "";
       if i < lines.len: inc i
       result.add Block(kind: bkFaq,
         faqItems: parseFaqItems(bodyLines, sourceRelPath, resolveContentPath, resolveSymbol))
+      continue
+
+    if stripped.startsWith(":::") and directiveName(stripped) == "video":
+      ## metacraft-theme-parity M3: a `:::video <id|url>` (or `src="..."`)
+      ## single-line embed directive. The arguments live on the directive
+      ## line itself -- there is no body and no closing `:::`, so only this
+      ## one line is consumed (unlike the block directives above).
+      let (vid, vsrc, vtitle) = parseVideoDirective(directiveArgs(stripped))
+      inc i
+      result.add Block(kind: bkVideo, videoId: vid, videoSrc: vsrc, videoTitle: vtitle)
       continue
 
     if isComponentTagLine(stripped):

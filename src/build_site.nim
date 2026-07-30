@@ -30,6 +30,29 @@ const bundledDefaultStylesheet = staticRead("../assets/style.css")
   ## deliverable 1). Single source of truth: it IS `assets/style.css`,
   ## so the fallback can never drift from the framework's real stylesheet.
 
+proc compileClientBundle(outDir, clientEntry: string) =
+  ## M1 (client-JS bundle): compile the consumer's `nim js` mount entry
+  ## (`clientEntry`, e.g. `src/main.nim`) to `outDir/assets/app.js` so the
+  ## SSG ships a real, interactive client bundle. Runs BEFORE
+  ## `hashAndPurgeAssets`, so the emitted `app.js` is content-hashed and the
+  ## `/assets/app.js` placeholder every page carries (via
+  ## `DocsConfig.appScriptHref`) is rewritten to the cache-busted filename,
+  ## exactly like the stylesheet + search index. The build CWD is the
+  ## consumer's own package dir, so the consumer's `config.nims` (which sets
+  ## the framework/isonim `--path`s) governs the `nim js` compile just like
+  ## the `nim c` build that invoked this. A non-zero exit aborts the build --
+  ## a broken client entry is a real build failure, never silently shipped.
+  createDir(outDir / "assets")
+  let appJs = outDir / "assets" / "app.js"
+  let cmd = "nim js --hints:off -o:" & quoteShell(appJs) & " " & quoteShell(clientEntry)
+  info "ssg_client_bundle_compiling", entry = clientEntry, output = appJs
+  let code = execShellCmd(cmd)
+  doAssert code == 0,
+    "build_site: client bundle compile failed (`" & cmd & "` exited " & $code & ")"
+  doAssert fileExists(appJs) and getFileSize(appJs) > 0,
+    "build_site: " & appJs & " (compiled client bundle) must exist and be non-empty"
+  info "ssg_client_bundle_compiled", output = appJs, bytes = getFileSize(appJs)
+
 proc outputPathFor(outDir, routePath: string): string =
   ## Clean-URL mapping: "/" -> index.html, "/guide/dsl" -> guide/dsl/index.html.
   let trimmed = routePath.strip(chars = {'/'})
@@ -176,7 +199,8 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
                  manifest: RouteManifest = buildManifestFromContent(contentDir);
                  cfg: DocsConfig = docsConfig(); assetsDir = "assets";
                  publicDir = ""; warnings: ref seq[string] = nil;
-                 host: PluginHost = PluginHost(); docsTokensCss = ""): int =
+                 host: PluginHost = PluginHost(); docsTokensCss = "";
+                 clientEntry = ""): int =
   ## Statically generates the whole site; returns the page count.
   ## `manifest`'s framework default (M1 corrective deliverable 2)
   ## auto-discovers the route table from `contentDir`, exactly like
@@ -208,6 +232,15 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   copyAssetsVerbatim(outDir, assetsDir, docsTokensCss, cfg.basePath)
   if dirExists(publicDir):
     copyDir(publicDir, outDir)
+
+  ## M1 (client-JS bundle): compile the consumer's `nim js` mount entry into
+  ## `assets/app.js` (hashed below) and make sure every page injects it. When
+  ## `appScriptHref` is unset the framework default placeholder is used, which
+  ## the asset-hash pass then rewrites to the cache-busted filename.
+  if clientEntry.len > 0:
+    if cfg.appScriptHref.len == 0:
+      cfg.appScriptHref = defaultAppScriptUrl
+    compileClientBundle(outDir, clientEntry)
 
   ## M6 deliverable 1: surface missing description/title as observable
   ## warnings (logged + optionally returned), before rendering anything.

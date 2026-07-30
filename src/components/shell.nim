@@ -13,6 +13,7 @@
 ## different macro backends. M1 replaces both with the real
 ## routing/rendering core; a hand-rolled pair is enough for one route.
 
+import std/strutils
 import isonim/core/computation
 import isonim/dsl/ui
 import isonim/ssr/escape
@@ -371,6 +372,19 @@ proc renderHeadSecurityTop*(cfg: DocsConfig): string =
   renderCspMetaHtml(cfg.csp, pageInlineScriptBodies(cfg)) &
     renderThemeBootstrapHtml() & renderAnalyticsHtml(cfg.analytics)
 
+proc renderAppScriptHtml*(cfg: DocsConfig): string =
+  ## M1 (client-JS bundle): the single `<script src="..." defer></script>` the
+  ## framework injects into `<head>` on EVERY page when a consumer configures
+  ## `appScriptHref` (the compiled `nim js` app bundle). `defer` makes it
+  ## PROGRESSIVE ENHANCEMENT -- it runs after the document is fully parsed, so
+  ## the SSR HTML is complete and navigable without it and the script only
+  ## ADDS behaviour (theme toggle, live search, sidebar collapse, soft-nav).
+  ## Empty `appScriptHref` (the framework default) -> "" (byte-for-byte the
+  ## pre-M1 head). A same-origin `/assets/...` src is allowed by even a strict
+  ## `script-src 'self'` CSP, so no per-page hash is needed.
+  if cfg.appScriptHref.len == 0: return ""
+  "<script src=\"" & escapeAttr(cfg.appScriptHref) & "\" defer></script>"
+
 proc renderSecureDocumentHeadHtml*(head: DocumentHead; cfg: DocsConfig): string =
   ## The full head region (everything between `<html...>` and `<body>`),
   ## laid out per the security config. The theme no-flash bootstrap `<script>`
@@ -383,9 +397,16 @@ proc renderSecureDocumentHeadHtml*(head: DocumentHead; cfg: DocsConfig): string 
   ## `renderHeadSecurityTop`. Either way `<meta charset="utf-8">` stays the
   ## first child of `<head>`.
   let analyticsHtml = renderAnalyticsHtml(cfg.analytics)
-  if not cfg.csp.enabled and analyticsHtml.len == 0:
-    return renderDocumentHeadHtml(head, renderThemeBootstrapHtml())
-  renderDocumentHeadHtml(head, renderHeadSecurityTop(cfg))
+  let headHtml =
+    if not cfg.csp.enabled and analyticsHtml.len == 0:
+      renderDocumentHeadHtml(head, renderThemeBootstrapHtml())
+    else:
+      renderDocumentHeadHtml(head, renderHeadSecurityTop(cfg))
+  ## M1 (client-JS bundle): splice the deferred app `<script>` in just before
+  ## `</head>` (there is exactly one). Empty `appScriptHref` -> unchanged head.
+  let appScript = renderAppScriptHtml(cfg)
+  if appScript.len == 0: headHtml
+  else: headHtml.replace("</head>", appScript & "</head>")
 
 proc renderSiteFrame*[R, E](r: R; vm: SiteShellViewModel): E =
   ## The rendering shell: header/nav/main/footer regions carrying stable

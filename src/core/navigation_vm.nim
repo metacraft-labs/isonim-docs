@@ -177,8 +177,20 @@ proc computeNavExpansion(node: var NavSection; activeRoutePath: string): bool =
   node.isExpanded = hasActive
   hasActive
 
+proc forceExpandAll(node: var NavSection) =
+  ## M1 (robust no-JS nav): unconditionally mark this node and every
+  ## descendant expanded, overriding the active-path-only auto-expand
+  ## default. Used when `DocsConfig.expandAllNavSections` is on so the
+  ## sidebar's real `<a>` links are visible/navigable without the client JS
+  ## (the collapsed-section CSS `display:none`s them otherwise). JS
+  ## click-to-collapse still toggles individual sections on top of this.
+  node.isExpanded = true
+  for i in 0 ..< node.children.len:
+    forceExpandAll(node.children[i])
+
 proc buildSidebar*(pages: seq[NavPage]; activeRoutePath: string;
-                   sectionOrder: seq[string] = @[]): SidebarViewModel =
+                   sectionOrder: seq[string] = @[];
+                   expandAll = false): SidebarViewModel =
   ## Builds the infinite-depth sidebar tree (M5 corrective deliverable
   ## 1): every page's full `section` path (however deeply nested --
   ## "guide", "guide/advanced", "guide/advanced/tips", ...) becomes its
@@ -197,6 +209,9 @@ proc buildSidebar*(pages: seq[NavPage]; activeRoutePath: string;
     insertNavItem(root, segments, "", item)
   for i in 0 ..< root.children.len:
     discard computeNavExpansion(root.children[i], activeRoutePath)
+  if expandAll:
+    for i in 0 ..< root.children.len:
+      forceExpandAll(root.children[i])
   var sections: seq[NavSection] = @[]
   if root.items.len > 0:
     sections.add NavSection(key: "", title: "", items: root.items, isExpanded: true)
@@ -278,7 +293,8 @@ proc buildAdjacentPages*(pages: seq[NavPage]; activeRoutePath: string;
 
 proc buildNavigationViewModel*(pages: seq[NavPage]; activeRoutePath: string;
                                 toc: seq[HeadingNode] = @[];
-                                sectionOrder: seq[string] = @[]): NavigationViewModel =
+                                sectionOrder: seq[string] = @[];
+                                expandAll = false): NavigationViewModel =
   ## The one entry point later renderers (`components/navigation_view.nim`)
   ## and shell wiring (`ssr.nim`'s `renderRoute`, `main_web.nim`'s
   ## `createRouteApp`) use: every sub-ViewModel above, built off the same
@@ -286,7 +302,7 @@ proc buildNavigationViewModel*(pages: seq[NavPage]; activeRoutePath: string;
   ## `sectionOrder` (from `DocsConfig.sectionOrder`) orders the top-level
   ## sections; empty = alphabetical, unchanged.
   let (previous, next) = buildAdjacentPages(pages, activeRoutePath, sectionOrder)
-  NavigationViewModel(sidebar: buildSidebar(pages, activeRoutePath, sectionOrder),
+  NavigationViewModel(sidebar: buildSidebar(pages, activeRoutePath, sectionOrder, expandAll),
                        breadcrumbs: buildBreadcrumbs(pages, activeRoutePath),
                        previous: previous, next: next, toc: toc)
 

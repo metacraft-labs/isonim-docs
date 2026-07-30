@@ -176,7 +176,8 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
     ## isn't a real, matched route (404/redirect) highlights nothing.
     let navPages = buildNavPages(effManifest, loadEntry)
     let activePath = if entry.status == rsOk: entry.canonicalPath else: ""
-    buildNavigationViewModel(navPages, activePath, sectionOrder = cfg.sectionOrder)
+    buildNavigationViewModel(navPages, activePath, sectionOrder = cfg.sectionOrder,
+                             expandAll = cfg.expandAllNavSections)
 
   proc fallbackHtml(): string =
     ## The HTTP-500 page: normal shell chrome with an error notice in place
@@ -220,7 +221,8 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
       let pageTitle = if contentEntry.page.title.len > 0: contentEntry.page.title else: entry.meta.title
       let navPages = buildNavPages(effManifest, loadEntry)
       let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree,
-                                                sectionOrder = cfg.sectionOrder)
+                                                sectionOrder = cfg.sectionOrder,
+                                                expandAll = cfg.expandAllNavSections)
       renderFn = proc(): string =
         htmlOpen & headRegion & "<body>" & bodyChrome &
           renderMarkdownPageHtml(pageTitle, doc.blocks, navigation,
@@ -237,7 +239,9 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
       let apiVm = buildApiReferenceViewModel(ingest, entry.meta.title)
       let pageTitle = if apiVm.title.len > 0: apiVm.title else: entry.meta.title
       let navPages = buildNavPages(effManifest, loadEntry)
-      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath)
+      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath,
+                                                sectionOrder = cfg.sectionOrder,
+                                                expandAll = cfg.expandAllNavSections)
       renderFn = proc(): string =
         htmlOpen & headRegion & "<body>" & bodyChrome &
           renderApiReferencePageHtml(pageTitle, apiVm, navigation,
@@ -254,7 +258,9 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
       let symVm = buildSymbolReferenceViewModel(ingest, entry.meta.title)
       let pageTitle = if entry.meta.title.len > 0: entry.meta.title else: symVm.title
       let navPages = buildNavPages(effManifest, loadEntry)
-      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath)
+      let navigation = buildNavigationViewModel(navPages, entry.canonicalPath,
+                                                sectionOrder = cfg.sectionOrder,
+                                                expandAll = cfg.expandAllNavSections)
       renderFn = proc(): string =
         htmlOpen & headRegion & "<body>" & bodyChrome &
           renderSymbolReferencePageHtml(pageTitle, symVm, navigation,
@@ -281,7 +287,8 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
       let tut = newTutorialViewModel(entry.canonicalPath, pageTitle, steps)
       let navPages = buildNavPages(effManifest, loadEntry)
       let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree,
-                                                sectionOrder = cfg.sectionOrder)
+                                                sectionOrder = cfg.sectionOrder,
+                                                expandAll = cfg.expandAllNavSections)
       renderFn = proc(): string =
         htmlOpen & headRegion & "<body>" & bodyChrome &
           renderTutorialPageHtml(pageTitle, tut, doc.blocks, navigation,

@@ -118,6 +118,17 @@ type
       ## without altering the three docs consumers' default behaviour.
     savePath*: string
       ## The path `saveHandler` answers on (default `defaultSavePath`).
+    clientEntry*: string
+      ## M1 (client-JS bundle): OPTIONAL path to the consumer's `nim js` mount
+      ## entry (e.g. `src/main.nim`). When set, a request for `/assets/app.js`
+      ## is served by compiling that entry with `nim js` (LAZILY, on first
+      ## request, then cached for the process lifetime -- so constructing a
+      ## server in a test never pays the compile) rather than reading a file
+      ## from `assetsDirs`. Empty (the default) leaves `/assets/app.js` to the
+      ## normal on-disk asset lookup, so every existing consumer is unchanged.
+    clientBundleCache: string
+      ## Process-lifetime cache of the compiled `clientEntry` JS (empty until
+      ## the first successful `/assets/app.js` request compiles it).
 
 # ---------------------------------------------------------------------------
 # Reload hub — the transport-agnostic fan-out the watcher feeds and the WS
@@ -255,7 +266,8 @@ proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
                     tokensCssProvider: proc(): string {.closure.} = nil;
                     watchPaths: seq[string] = @[];
                     saveHandler: SaveHandler = nil;
-                    savePath = defaultSavePath): DevServer =
+                    savePath = defaultSavePath;
+                    clientEntry = ""): DevServer =
   ## Constructs a dev server over `contentDir`, taking the initial snapshot up
   ## front so the first `pollForChanges` reports only genuine edits made after
   ## startup. `assetsDirs`/`docsTokensCss` (both optional) make the server serve
@@ -275,7 +287,8 @@ proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
     tokensCssProvider: tokensCssProvider,
     watchPaths: watchPaths,
     saveHandler: saveHandler,
-    savePath: savePath)
+    savePath: savePath,
+    clientEntry: clientEntry)
   # Initial snapshot covers content + the watched files.
   result.snapshot = snapshotContentDir(contentDir)
   for k, v in snapshotWatchPaths(watchPaths):
@@ -301,6 +314,25 @@ proc mimeForAsset*(path: string): string =
   of ".webp": "image/webp"
   else: "application/octet-stream"
 
+proc clientBundleJs(server: DevServer): string =
+  ## M1 (client-JS bundle): compile `server.clientEntry` with `nim js` on
+  ## first use and cache the result for the process lifetime. Compiles into a
+  ## temp file the consumer's own `config.nims` (active in the dev CWD)
+  ## governs, exactly like the SSG's `compileClientBundle`. A failed compile
+  ## raises, which `handleRoute`'s asset path turns into a 500 rather than
+  ## dropping the connection -- so a broken client entry is visible, not silent.
+  if server.clientBundleCache.len > 0: return server.clientBundleCache
+  let outJs = getTempDir() / "isonim-dev-app.js"
+  let cmd = "nim js --hints:off -o:" & quoteShell(outJs) & " " & quoteShell(server.clientEntry)
+  info "dev_server_client_bundle_compiling", entry = server.clientEntry
+  let code = execShellCmd(cmd)
+  if code != 0 or not fileExists(outJs):
+    raise newException(IOError,
+      "client bundle compile failed (`" & cmd & "` exited " & $code & ")")
+  server.clientBundleCache = readFile(outJs)
+  info "dev_server_client_bundle_compiled", bytes = server.clientBundleCache.len
+  server.clientBundleCache
+
 proc handleAsset*(server: DevServer; path: string):
     tuple[status: int; contentType, body: string] =
   ## Serves a request under `/assets/` from `server.assetsDir`. For
@@ -312,6 +344,10 @@ proc handleAsset*(server: DevServer; path: string):
   let rel = path[prefix.len .. ^1]
   if rel.len == 0 or ".." in rel:
     return (404, "text/plain; charset=utf-8", "not found")
+  ## M1 (client-JS bundle): a configured `clientEntry` owns `/assets/app.js`,
+  ## compiled+cached lazily (see `clientBundleJs`), ahead of the on-disk lookup.
+  if rel == "app.js" and server.clientEntry.len > 0:
+    return (200, mimeForAsset(rel), server.clientBundleJs())
   for dir in server.assetsDirs:
     let full = dir / rel
     if fileExists(full):
