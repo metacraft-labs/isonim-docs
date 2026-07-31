@@ -162,9 +162,18 @@ a:hover {
   color: var(--docs-fg-muted);
 }
 
-/* Sidebar: warm right-divider column, sticky under the header. */
+/* Sidebar: warm right-divider column, sticky under the header.
+ *
+ * `grid-row: 2 / span 9999` pins the sidebar to the content band (row 2,
+ * under the full-width header) and spans every content row rather than claiming
+ * a solo auto-placed row. Without it the sparse row auto-placement drops the
+ * sidebar (col 1) and TOC (col 3) into a dedicated row BETWEEN the breadcrumb
+ * row and the `.docs-main` row (both col 2); the tall sidebar then inflates
+ * that row and shoves article content far below the breadcrumb. Reset to `auto`
+ * in the single-column media query below. */
 .docs-nav-sidebar {
   grid-column: 1;
+  grid-row: 2 / span 9999;
   max-width: var(--docs-sidebar-width);
   padding: var(--docs-space-8) var(--docs-space-6) var(--docs-space-8) 0;
   border-right: 1px solid var(--docs-border);
@@ -178,6 +187,7 @@ a:hover {
 
 .docs-nav-toc {
   grid-column: 3;
+  grid-row: 2 / span 9999;
   padding-top: var(--docs-space-8);
   position: sticky;
   top: 6vh;
@@ -230,6 +240,7 @@ a:hover {
   .docs-nav-adjacent,
   .docs-main {
     grid-column: 1;
+    grid-row: auto;
     position: static;
     max-height: none;
     max-width: none;
