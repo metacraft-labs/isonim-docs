@@ -49,7 +49,7 @@ serve-docs:
 # design-build`.)
 design port='8080' host='127.0.0.1':
     nim js --hints:off -o:design/build/design_editor.js design/main.nim
-    @echo "design editor on http://{{host}}:{{port}}/  (Ctrl-C to stop; run `just dev-docs` in another shell to see saves hot-reload the docs)"
+    @echo "design editor on http://{{host}}:{{port}}/  (Ctrl-C to stop; run 'just dev-docs' in another shell to see saves hot-reload the docs)"
     nim c -r --hints:off design/serve.nim {{port}} {{host}}
 
 # Build the design editor JS bundle only (no server) -- e.g. for the harness
