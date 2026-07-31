@@ -530,6 +530,19 @@ proc serve*(server: DevServer; port = 8000; pollIntervalMs = 250;
   http.listen(Port(port), host)
   info "dev_server_listening", host = host, port = port,
     contentDir = server.contentDir
+  # Warm the client bundle at startup. Compiling it lazily inside the request
+  # handler (clientBundleJs on first `/assets/app.js`) blocks the single-threaded
+  # event loop for the whole `nim js` compile (tens of seconds), which hangs the
+  # server on the first page load. Do the heavy compile now, while the operator is
+  # already waiting for startup, so every request is served from cache. A compile
+  # failure is logged but does not stop the server -- the site works without JS
+  # (progressive enhancement); `/assets/app.js` then 500s visibly per request.
+  if server.clientEntry.len > 0:
+    info "dev_server_precompiling_client_bundle", entry = server.clientEntry
+    try:
+      discard server.clientBundleJs()
+    except CatchableError as e:
+      error "dev_server_client_bundle_precompile_failed", msg = e.msg
   proc pollLoop() {.async.} =
     while true:
       await sleepAsync(pollIntervalMs)
