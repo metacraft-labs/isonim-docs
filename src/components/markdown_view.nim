@@ -73,6 +73,19 @@ const
   # metacraft-theme-parity M3: `:::video` responsive embed (WebFlow `.w-video`).
   videoClass* = "docs-md-video"
   videoFrameClass* = "docs-md-video-frame"
+  # metacraft-theme-parity: `:::form` semantic form (WebFlow `.support-form` /
+  # `.user-form`). Every class is theme-token-driven in the consumer CSS.
+  formClass* = "docs-md-form"
+  formRowClass* = "docs-md-form-row"
+  formRowCheckboxClass* = "docs-md-form-row-checkbox"
+  formLabelClass* = "docs-md-form-label"
+  formInputClass* = "docs-md-form-input"
+  formSelectClass* = "docs-md-form-select"
+  formTextareaClass* = "docs-md-form-textarea"
+  formCheckClass* = "docs-md-form-check"
+  formCheckInputClass* = "docs-md-form-check-input"
+  formSubmitClass* = "docs-md-form-submit"
+  formSelectPlaceholder* = "Select one…"
 
 proc buttonClasses*(variant: string): string =
   ## The class attribute for an action button; the secondary (white)
@@ -409,6 +422,97 @@ proc renderVideo*[R, E](r: R; blk: Block): E =
     r.appendChild(wrap, frame)
   wrap
 
+proc formInputTypeAttr*(kind: FormFieldKind): string =
+  ## The `type=` attribute for a plain `<input>` field (text/email/password);
+  ## the structural kinds (textarea/select/checkbox) are their own elements and
+  ## never reach this.
+  case kind
+  of ffkEmail: "email"
+  of ffkPassword: "password"
+  of ffkCheckbox: "checkbox"
+  else: "text"
+
+proc renderForm*[R, E](r: R; blk: Block): E =
+  ## metacraft-theme-parity: a semantic, accessible `<form>` (WebFlow
+  ## `.support-form` / `.user-form`). Every field is a labeled row; a `select`
+  ## carries a leading empty placeholder option; a `checkbox` wraps its label;
+  ## the submit is the shared `docs-md-button` token styled as a form submit.
+  ## The form has no functional backend (a `mailto:`/no-op action is fine) --
+  ## it matches WebFlow's field set/labels, and every author string is escaped
+  ## by the backend's own `createTextNode`/`setAttribute`.
+  let form = r.createElement("form")
+  r.setAttribute(form, "class", formClass)
+  if blk.formAction.len > 0: r.setAttribute(form, "action", blk.formAction)
+  r.setAttribute(form, "method", (if blk.formMethod.len > 0: blk.formMethod else: "post"))
+  for field in blk.formFields:
+    let fieldId = "docs-form-" & field.name
+    if field.kind == ffkCheckbox:
+      let row = r.createElement("div")
+      r.setAttribute(row, "class", formRowClass & " " & formRowCheckboxClass)
+      let label = r.createElement("label")
+      r.setAttribute(label, "class", formCheckClass)
+      let input = r.createElement("input")
+      r.setAttribute(input, "type", "checkbox")
+      r.setAttribute(input, "class", formCheckInputClass)
+      r.setAttribute(input, "name", field.name)
+      r.setAttribute(input, "id", fieldId)
+      r.appendChild(label, input)
+      let span = r.createElement("span")
+      r.setAttribute(span, "class", formLabelClass)
+      r.appendChild(span, r.createTextNode(field.label))
+      r.appendChild(label, span)
+      r.appendChild(row, label)
+      r.appendChild(form, row)
+      continue
+    let row = r.createElement("div")
+    r.setAttribute(row, "class", formRowClass)
+    let label = r.createElement("label")
+    r.setAttribute(label, "class", formLabelClass)
+    r.setAttribute(label, "for", fieldId)
+    r.appendChild(label, r.createTextNode(field.label))
+    r.appendChild(row, label)
+    case field.kind
+    of ffkTextarea:
+      let ta = r.createElement("textarea")
+      r.setAttribute(ta, "class", formInputClass & " " & formTextareaClass)
+      r.setAttribute(ta, "name", field.name)
+      r.setAttribute(ta, "id", fieldId)
+      if field.placeholder.len > 0: r.setAttribute(ta, "placeholder", field.placeholder)
+      if field.required: r.setAttribute(ta, "required", "required")
+      r.appendChild(row, ta)
+    of ffkSelect:
+      let sel = r.createElement("select")
+      r.setAttribute(sel, "class", formInputClass & " " & formSelectClass)
+      r.setAttribute(sel, "name", field.name)
+      r.setAttribute(sel, "id", fieldId)
+      if field.required: r.setAttribute(sel, "required", "required")
+      let placeholder = r.createElement("option")
+      r.setAttribute(placeholder, "value", "")
+      r.appendChild(placeholder, r.createTextNode(formSelectPlaceholder))
+      r.appendChild(sel, placeholder)
+      for opt in field.options:
+        let o = r.createElement("option")
+        r.setAttribute(o, "value", opt)
+        r.appendChild(o, r.createTextNode(opt))
+        r.appendChild(sel, o)
+      r.appendChild(row, sel)
+    else:
+      let input = r.createElement("input")
+      r.setAttribute(input, "class", formInputClass)
+      r.setAttribute(input, "type", formInputTypeAttr(field.kind))
+      r.setAttribute(input, "name", field.name)
+      r.setAttribute(input, "id", fieldId)
+      if field.placeholder.len > 0: r.setAttribute(input, "placeholder", field.placeholder)
+      if field.required: r.setAttribute(input, "required", "required")
+      r.appendChild(row, input)
+    r.appendChild(form, row)
+  let submit = r.createElement("button")
+  r.setAttribute(submit, "type", "submit")
+  r.setAttribute(submit, "class", buttonClass & " " & formSubmitClass)
+  r.appendChild(submit, r.createTextNode(blk.formSubmit))
+  r.appendChild(form, submit)
+  form
+
 proc renderMarkdownBlock*[R, E](r: R; blk: Block; idPath: string;
                                 registry: ComponentRegistry[R, E] = nil): E
 
@@ -513,6 +617,7 @@ proc renderMarkdownBlock*[R, E](r: R; blk: Block; idPath: string;
   of bkButton: renderButton[R, E](r, blk)
   of bkFaq: renderFaq[R, E](r, blk)
   of bkVideo: renderVideo[R, E](r, blk)
+  of bkForm: renderForm[R, E](r, blk)
 
 proc renderMarkdownBody*[R, E](r: R; blocks: seq[Block];
                                registry: ComponentRegistry[R, E] = nil): E =
@@ -669,6 +774,58 @@ proc renderVideoHtml*(blk: Block): string =
 proc renderMarkdownBlockHtml*(blk: Block; idPath: string;
                               registry: HtmlComponentRegistry = nil): string
 
+proc renderFormHtml*(blk: Block): string =
+  ## SSR counterpart to `renderForm`: a semantic, accessible `<form>` with
+  ## labeled fields, an empty placeholder option on selects, and the shared
+  ## `docs-md-button` submit. Every author string is `escapeHtml`/`escapeAttr`
+  ## escaped, so a hostile field name/label/option cannot break out of its
+  ## attribute or element.
+  let methodAttr = if blk.formMethod.len > 0: blk.formMethod else: "post"
+  let actionAttr =
+    if blk.formAction.len > 0: " action=\"" & escapeAttr(blk.formAction) & "\"" else: ""
+  result = "<form class=\"" & formClass & "\"" & actionAttr &
+    " method=\"" & escapeAttr(methodAttr) & "\">"
+  for field in blk.formFields:
+    let fieldId = "docs-form-" & field.name
+    let requiredAttr = if field.required: " required" else: ""
+    if field.kind == ffkCheckbox:
+      result.add "<div class=\"" & formRowClass & " " & formRowCheckboxClass & "\">"
+      result.add "<label class=\"" & formCheckClass & "\">"
+      result.add "<input type=\"checkbox\" class=\"" & formCheckInputClass &
+        "\" name=\"" & escapeAttr(field.name) & "\" id=\"" & escapeAttr(fieldId) & "\"" &
+        requiredAttr & " />"
+      result.add "<span class=\"" & formLabelClass & "\">" & escapeHtml(field.label) & "</span>"
+      result.add "</label></div>"
+      continue
+    result.add "<div class=\"" & formRowClass & "\">"
+    result.add "<label class=\"" & formLabelClass & "\" for=\"" & escapeAttr(fieldId) & "\">" &
+      escapeHtml(field.label) & "</label>"
+    case field.kind
+    of ffkTextarea:
+      let ph = if field.placeholder.len > 0:
+          " placeholder=\"" & escapeAttr(field.placeholder) & "\"" else: ""
+      result.add "<textarea class=\"" & formInputClass & " " & formTextareaClass &
+        "\" name=\"" & escapeAttr(field.name) & "\" id=\"" & escapeAttr(fieldId) & "\"" &
+        ph & requiredAttr & "></textarea>"
+    of ffkSelect:
+      result.add "<select class=\"" & formInputClass & " " & formSelectClass &
+        "\" name=\"" & escapeAttr(field.name) & "\" id=\"" & escapeAttr(fieldId) & "\"" &
+        requiredAttr & ">"
+      result.add "<option value=\"\">" & escapeHtml(formSelectPlaceholder) & "</option>"
+      for opt in field.options:
+        result.add "<option value=\"" & escapeAttr(opt) & "\">" & escapeHtml(opt) & "</option>"
+      result.add "</select>"
+    else:
+      let ph = if field.placeholder.len > 0:
+          " placeholder=\"" & escapeAttr(field.placeholder) & "\"" else: ""
+      result.add "<input class=\"" & formInputClass & "\" type=\"" &
+        escapeAttr(formInputTypeAttr(field.kind)) & "\" name=\"" & escapeAttr(field.name) &
+        "\" id=\"" & escapeAttr(fieldId) & "\"" & ph & requiredAttr & " />"
+    result.add "</div>"
+  result.add "<button type=\"submit\" class=\"" & buttonClass & " " & formSubmitClass &
+    "\">" & escapeHtml(blk.formSubmit) & "</button>"
+  result.add "</form>"
+
 proc renderComponentFallbackHtml*(blk: Block): string =
   ## SSR counterpart to `renderComponentFallback` -- the same typed inline
   ## notice for an unknown/flagged component tag.
@@ -733,6 +890,7 @@ proc renderMarkdownBlockHtml*(blk: Block; idPath: string;
   of bkButton: renderButtonHtml(blk)
   of bkFaq: renderFaqHtml(blk)
   of bkVideo: renderVideoHtml(blk)
+  of bkForm: renderFormHtml(blk)
 
 proc renderMarkdownBodyHtml*(blocks: seq[Block];
                              registry: HtmlComponentRegistry = nil): string =

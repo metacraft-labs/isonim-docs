@@ -93,6 +93,10 @@ type
     bkButton   ## metacraft-theme-parity M2: a standalone `:::button` action link.
     bkFaq      ## metacraft-theme-parity M2: a `:::faq` accordion of `:::q` items.
     bkVideo    ## metacraft-theme-parity M3: a `:::video` responsive embed.
+    bkForm     ## metacraft-theme-parity: a `:::form` semantic contact/auth form
+               ## of `@field` lines (WebFlow `.support-form` / `.user-form`).
+               ## Added at the END of the enum so every existing `BlockKind`
+               ## ordinal is preserved (several modules `case` on it).
 
   CardItem* = object
     ## metacraft-theme-parity M2: one `:::card title="…" icon="…" href="…"`
@@ -123,6 +127,32 @@ type
     ## Renders as a native, JS-free `<details>`/`<summary>` disclosure.
     question*: string
     answer*: seq[seq[InlineSpan]]
+
+  FormFieldKind* = enum
+    ## metacraft-theme-parity: the input type of one `:::form` `@field`. The
+    ## default (`ffkText`) covers a bare `type=text`/unknown/missing type, so a
+    ## typo never crashes -- it just renders a plain text input.
+    ffkText
+    ffkEmail
+    ffkPassword
+    ffkTextarea
+    ffkSelect
+    ffkCheckbox
+
+  FormField* = object
+    ## metacraft-theme-parity: one field of a `:::form`. Flat (non-variant)
+    ## record on purpose -- the same JS-backend deep-copy-of-variant-seq hazard
+    ## `ComponentProp`/`CardItem` document applies, and these are carried inside
+    ## a `bkForm` `Block` copied around on both targets. `name` is the field's
+    ## form name (and the `id`/`for` a11y binding); `label` its visible label;
+    ## `placeholder` an optional input placeholder; `options` the `<option>`
+    ## values for a `ffkSelect`; `required` marks it `required`.
+    name*: string
+    label*: string
+    placeholder*: string
+    kind*: FormFieldKind
+    options*: seq[string]
+    required*: bool
 
   TabPanel* = object
     ## One `@tab Title` panel inside a `:::tabs` block: the panel's own
@@ -209,6 +239,16 @@ type
       videoId*: string
       videoSrc*: string
       videoTitle*: string
+    of bkForm:
+      ## metacraft-theme-parity: a semantic `<form>`. `formAction`/`formMethod`
+      ## are the form's own attributes (there is no backend -- a `mailto:` or a
+      ## no-op relative action is fine, matching WebFlow's own client-only
+      ## forms); `formSubmit` is the submit button's label; `formFields` the
+      ## ordered, labeled fields.
+      formAction*: string
+      formMethod*: string
+      formSubmit*: string
+      formFields*: seq[FormField]
 
   HeadingNode* = object
     ## One node of the document's heading tree, nested by heading level
@@ -730,6 +770,43 @@ proc parseFaqItems(bodyLines: seq[string]; sourceRelPath: string;
       itemLines.add raw
   flush()
 
+proc parseFormFieldKind(t: string): FormFieldKind =
+  ## Maps a `@field ... type=` token to a `FormFieldKind`. An unknown/absent
+  ## type is a plain text input -- a typo never crashes the parser.
+  case t.strip().toLowerAscii()
+  of "email": ffkEmail
+  of "password": ffkPassword
+  of "textarea": ffkTextarea
+  of "select": ffkSelect
+  of "checkbox": ffkCheckbox
+  else: ffkText
+
+proc parseFormFields(bodyLines: seq[string]): seq[FormField] =
+  ## Parses the body of a `:::form` block into `@field ...` items. Each field
+  ## line's attributes are `name`, `label`, `type`, `placeholder`,
+  ## `options="a,b,c"` (for a `select`), and a valueless `required`. A line that
+  ## is not an `@field` (blank, stray text) is ignored rather than raising --
+  ## hand-authored markup never crashes the parser.
+  for raw in bodyLines:
+    let s = raw.strip()
+    if s.len == 0: continue
+    if not (s.startsWith("@field") and (s.len == 6 or s[6] in {' ', '\t'})):
+      continue
+    let props = parseComponentProps(s[6 .. ^1].strip())
+    var options: seq[string] = @[]
+    let optRaw = props.getStr("options")
+    if optRaw.len > 0:
+      for part in optRaw.split(','):
+        let trimmed = part.strip()
+        if trimmed.len > 0: options.add trimmed
+    result.add FormField(
+      name: props.getStr("name"),
+      label: props.getStr("label"),
+      placeholder: props.getStr("placeholder"),
+      kind: parseFormFieldKind(props.getStr("type")),
+      options: options,
+      required: props.getBool("required"))
+
 proc startsAnotherBlock(line: string): bool =
   ## Whether `line` (already stripped) begins a *different* block kind,
   ## so paragraph accumulation knows where to stop even without a
@@ -860,6 +937,25 @@ proc parseMarkdownBlocks*(body: string; sourceRelPath: string = "";
       if i < lines.len: inc i
       result.add Block(kind: bkFaq,
         faqItems: parseFaqItems(bodyLines, sourceRelPath, resolveContentPath, resolveSymbol))
+      continue
+
+    if stripped.startsWith(":::") and directiveName(stripped) == "form":
+      ## metacraft-theme-parity: a `:::form action="…" method="…" submit="…"`
+      ## block whose body is a run of `@field ...` lines (mirroring how `:::faq`
+      ## delimits its `:::q` items), read up to the matching bare `:::` closer.
+      let formProps = parseComponentProps(directiveArgs(stripped))
+      inc i
+      var bodyLines: seq[string] = @[]
+      while i < lines.len and lines[i].strip() != ":::":
+        bodyLines.add lines[i]
+        inc i
+      if i < lines.len: inc i
+      let submit = formProps.getStr("submit")
+      result.add Block(kind: bkForm,
+        formAction: formProps.getStr("action"),
+        formMethod: formProps.getStr("method"),
+        formSubmit: (if submit.len > 0: submit else: "Submit"),
+        formFields: parseFormFields(bodyLines))
       continue
 
     if stripped.startsWith(":::") and directiveName(stripped) == "video":

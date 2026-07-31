@@ -119,7 +119,7 @@ proc linkSpans(blocks: seq[Block]): seq[InlineSpan] =
       for panel in blk.tabs:
         result.add linkSpans(panel.blocks)
     of bkHeading, bkCodeFence, bkTable, bkComponent,
-       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo:
+       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo, bkForm:
       ## M2 content components carry their hrefs as plain-string card/button
       ## targets rather than `ikLink` inline spans, so they're out of scope
       ## for inline-link reference checking (like `bkComponent`).
@@ -146,7 +146,7 @@ proc symRefSpans(blocks: seq[Block]): seq[InlineSpan] =
       for panel in blk.tabs:
         result.add symRefSpans(panel.blocks)
     of bkHeading, bkCodeFence, bkTable, bkComponent,
-       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo:
+       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo, bkForm:
       ## M2 content components carry their hrefs as plain-string card/button
       ## targets rather than `ikLink` inline spans, so they're out of scope
       ## for inline-link reference checking (like `bkComponent`).

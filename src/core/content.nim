@@ -114,6 +114,21 @@ type
     order*: int
     slug*: string
     draft*: bool
+    layout*: string ## OPTIONAL page-layout selector. Empty (the default) =
+                    ## the normal full docs chrome (header nav + sidebar + TOC
+                    ## + footer), so every existing page is unchanged. "minimal"
+                    ## opts into the auth-style minimal-chrome layout (logo only,
+                    ## a centered card, no sidebar/header-nav/TOC/footer) --
+                    ## threaded through the page render by `ssr.renderRoute` /
+                    ## `main_web.buildRouteApp`.
+    hidden*: bool   ## OPTIONAL "exclude from navigation" flag. `false` (the
+                    ## default) leaves the page in the sidebar/breadcrumbs/
+                    ## prev-next exactly as before. `true` keeps the page fully
+                    ## ROUTED + rendered (it is still a real manifest entry) but
+                    ## drops it from `navigation_vm.buildNavPages`, so a
+                    ## header-linked utility page (FAQ/Support/Sign In) doesn't
+                    ## clutter the docs sidebar -- matching WebFlow, whose
+                    ## sidebar lists only the doc sections.
     aliases*: seq[string] ## Old site-absolute route paths (e.g.
                           ## "/old-page") that used to address this page
                           ## before a rename, kept resolvable by M3
@@ -195,6 +210,10 @@ proc parseFrontMatter*(frontRaw: string): ContentFrontMatter =
       except ValueError: discard
     of "draft":
       try: result.draft = parseBool(value)
+      except ValueError: discard
+    of "layout": result.layout = value.toLowerAscii()
+    of "hidden":
+      try: result.hidden = parseBool(value)
       except ValueError: discard
     of "aliases": result.aliases = splitFrontMatterList(value)
     else: discard

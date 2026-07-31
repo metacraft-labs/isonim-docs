@@ -14,6 +14,7 @@
 ## whole frame the same direct way keeps one style throughout instead of
 ## mixing it with the DSL for the static header/nav/footer chrome.
 
+import isonim/ssr/escape
 import ../core/markdown_vm
 import ../core/shell_vm
 import ../core/navigation_vm
@@ -26,10 +27,54 @@ import ./markdown_view
 import ./search_view
 import ./theme_toggle
 
+proc renderMinimalMarkdownPage*[R, E](r: R; pageTitle: string; blocks: seq[Block];
+                                       siteLogo = ""; logoHref = ""): E =
+  ## The minimal-chrome (auth-style) page frame: a logo-only top bar and a
+  ## single centered card holding the page `<h1>` + the markdown body -- no
+  ## sidebar, no header nav, no TOC, no prev/next pager, no footer, no search
+  ## overlay (WebFlow's `.section-fullpage` sign-in layout). Opted into per page
+  ## via `layout: minimal` front matter (threaded by `main_web.buildRouteApp`);
+  ## every other page keeps the full `renderMarkdownPage` chrome below.
+  let frame = r.createElement("div")
+  r.setAttribute(frame, "class", frameClass & " " & frameMinimalClass)
+  r.appendChild(frame, renderSkipLink[R, E](r))
+
+  let navEl = r.createElement("nav")
+  r.setAttribute(navEl, "class", minimalNavClass)
+  if siteLogo.len > 0:
+    let a = r.createElement("a")
+    r.setAttribute(a, "class", logoLinkClass)
+    r.setAttribute(a, "href", (if logoHref.len > 0: logoHref else: "/"))
+    let img = r.createElement("img")
+    r.setAttribute(img, "class", logoClass)
+    r.setAttribute(img, "src", siteLogo)
+    r.setAttribute(img, "alt", pageTitle)
+    r.appendChild(a, img)
+    r.appendChild(navEl, a)
+  r.appendChild(frame, navEl)
+
+  let mainEl = r.createElement("main")
+  r.setAttribute(mainEl, "id", regionId(prMain))
+  r.setAttribute(mainEl, "class", mainClass & " " & mainMinimalClass)
+  r.setAttribute(mainEl, "tabindex", "-1")
+  let card = r.createElement("div")
+  r.setAttribute(card, "class", minimalCardClass)
+  let h1 = r.createElement("h1")
+  r.setAttribute(h1, "class", contentTitleClass)
+  r.appendChild(h1, r.createTextNode(pageTitle))
+  r.appendChild(card, h1)
+  r.appendChild(card, renderMarkdownBody[R, E](r, blocks))
+  r.appendChild(mainEl, card)
+  r.appendChild(frame, mainEl)
+  frame
+
 proc renderMarkdownPage*[R, E](r: R; pageTitle: string; blocks: seq[Block];
                                 navigation: NavigationViewModel = NavigationViewModel();
                                 search: SearchViewModel = SearchViewModel();
-                                theme: ThemeViewModel = ThemeViewModel()): E =
+                                theme: ThemeViewModel = ThemeViewModel();
+                                siteLogo = ""; logoHref = ""; minimal = false): E =
+  if minimal:
+    return renderMinimalMarkdownPage[R, E](r, pageTitle, blocks, siteLogo, logoHref)
   let frame = r.createElement("div")
   r.setAttribute(frame, "class", frameClass)
   r.appendChild(frame, renderSkipLink[R, E](r))
@@ -81,12 +126,37 @@ proc renderMarkdownPage*[R, E](r: R; pageTitle: string; blocks: seq[Block];
 
   frame
 
+proc renderMinimalMarkdownPageHtml*(pageTitle: string; blocks: seq[Block];
+                                     siteLogo = ""; logoHref = ""): string =
+  ## SSR string-mode counterpart to `renderMinimalMarkdownPage`: the minimal
+  ## auth-style frame (logo-only top bar + a centered card with the page `<h1>`
+  ## and the markdown body), with none of the docs chrome (sidebar, header nav,
+  ## TOC, pager, footer, search overlay). Kept structurally in lock-step with
+  ## the MockRenderer path above.
+  var logoHtml = ""
+  if siteLogo.len > 0:
+    logoHtml = "<a class=\"" & logoLinkClass & "\" href=\"" &
+      escapeAttr(if logoHref.len > 0: logoHref else: "/") & "\">" &
+      "<img class=\"" & logoClass & "\" src=\"" & escapeAttr(siteLogo) &
+      "\" alt=\"" & escapeAttr(pageTitle) & "\" /></a>"
+  "<div class=\"" & frameClass & " " & frameMinimalClass & "\">" &
+    renderSkipLinkHtml() &
+    "<nav class=\"" & minimalNavClass & "\">" & logoHtml & "</nav>" &
+    "<main id=\"" & regionId(prMain) & "\" class=\"" & mainClass & " " & mainMinimalClass &
+      "\" tabindex=\"-1\">" &
+      "<div class=\"" & minimalCardClass & "\">" &
+        "<h1 class=\"" & contentTitleClass & "\">" & escapeHtml(pageTitle) & "</h1>" &
+        renderMarkdownBodyHtml(blocks) &
+      "</div>" &
+    "</main>" &
+  "</div>"
+
 proc renderMarkdownPageHtml*(pageTitle: string; blocks: seq[Block];
                               navigation: NavigationViewModel = NavigationViewModel();
                               search: SearchViewModel = SearchViewModel();
                               theme: ThemeViewModel = ThemeViewModel();
                               siteLogo = ""; logoHref = ""; footerHtml = "";
-                              chrome = DocsChrome()): string =
+                              chrome = DocsChrome(); minimal = false): string =
   ## `siteLogo`/`logoHref`/`footerHtml` are the M3 optional chrome hooks,
   ## threaded from `DocsConfig` by the SSR entry; empty by default so the
   ## header/footer stay byte-for-byte the pre-M3 markup (see
@@ -100,6 +170,11 @@ proc renderMarkdownPageHtml*(pageTitle: string; blocks: seq[Block];
   ## and OMITS the prev/next pager -- kept in lock-step with the MockRenderer
   ## `renderMarkdownPage` above by deriving both from `blocks`. A normal
   ## (non-hero) page's `<main>` and pager are byte-for-byte the pre-M6 markup.
+  ## `minimal` (opt-in via `layout: minimal` front matter) renders the
+  ## auth-style minimal frame instead; a default `false` keeps every page on
+  ## the full-chrome path below, byte-for-byte unchanged.
+  if minimal:
+    return renderMinimalMarkdownPageHtml(pageTitle, blocks, siteLogo, logoHref)
   let landing = pageHasHero(blocks)
   let mainCls = if landing: mainClass & " " & mainWideClass else: mainClass
   "<div class=\"" & frameClass & "\">" &

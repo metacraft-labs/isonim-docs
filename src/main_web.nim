@@ -894,7 +894,11 @@ proc buildRouteApp[R](r: R; path: string; manifest: RouteManifest;
     let title = if contentEntry.page.title.len > 0: contentEntry.page.title else: entry.meta.title
     let navPages = buildNavPages(manifest, loadEmbeddedContentEntry)
     let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree)
-    result = renderMarkdownPage[R, Node](r, title, doc.blocks, navigation)
+    ## `layout: minimal` opts into the auth-style minimal frame -- kept in
+    ## lock-step with `ssr.renderRoute` so JS mount and SSR agree per page.
+    let minimal = contentEntry.front.layout == "minimal"
+    result = renderMarkdownPage[R, Node](r, title, doc.blocks, navigation,
+      siteLogo = cfg.siteLogo, logoHref = cfg.logoHref, minimal = minimal)
   elif entry.pageKind == pkSymbolReference:
     ## M8 deliverable 1: the JS mount counterpart to `ssr.renderRoute`'s
     ## `pkSymbolReference` branch, kept in lock-step -- ingest the

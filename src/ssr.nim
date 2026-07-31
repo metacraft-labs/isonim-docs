@@ -223,10 +223,15 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
       let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree,
                                                 sectionOrder = cfg.sectionOrder,
                                                 expandAll = cfg.expandAllNavSections)
+      ## `layout: minimal` front matter opts a page into the auth-style
+      ## minimal-chrome frame (no sidebar/header-nav/TOC/footer); every other
+      ## page keeps the full docs chrome, unchanged.
+      let minimal = contentEntry.front.layout == "minimal"
       renderFn = proc(): string =
         htmlOpen & headRegion & "<body>" & bodyChrome &
           renderMarkdownPageHtml(pageTitle, doc.blocks, navigation,
-            siteLogo = cfg.siteLogo, logoHref = cfg.logoHref, footerHtml = cfg.footerHtml, chrome = chromeOf(cfg)) & "</body></html>"
+            siteLogo = cfg.siteLogo, logoHref = cfg.logoHref, footerHtml = cfg.footerHtml,
+            chrome = chromeOf(cfg), minimal = minimal) & "</body></html>"
     elif entry.pageKind == pkApiReference:
       ## M7 deliverable 2: the route's `contentPath` binds to a
       ## consumer-supplied OpenAPI v3 spec file (YAML or JSON). The raw

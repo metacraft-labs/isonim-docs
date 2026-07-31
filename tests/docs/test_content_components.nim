@@ -135,6 +135,49 @@ suite "docs content components -- parsing (Tier 1, dual-target)":
     check empty[0].videoId == ""
     check videoEmbedSrc(empty[0]) == ""
 
+  test ":::form parses action/method/submit + a full field set into a bkForm":
+    let raw = ":::form action=\"/support\" method=\"get\" submit=\"Send message\"\n" &
+      "@field name=\"Email\" label=\"Email address\" type=email placeholder=\"Email\" required\n" &
+      "@field name=\"Name\" label=\"Name\" type=text required\n" &
+      "@field name=\"Category\" label=\"Category\" type=select options=\"Payments,Account,Software\" required\n" &
+      "@field name=\"Message\" label=\"Message\" type=textarea required\n" &
+      "@field name=\"remember\" label=\"Remember me\" type=checkbox\n" &
+      ":::"
+    let blocks = parseMarkdownBlocks(raw)
+    check blocks.len == 1
+    check blocks[0].kind == bkForm
+    check blocks[0].formAction == "/support"
+    check blocks[0].formMethod == "get"
+    check blocks[0].formSubmit == "Send message"
+    check blocks[0].formFields.len == 5
+    check blocks[0].formFields[0].name == "Email"
+    check blocks[0].formFields[0].label == "Email address"
+    check blocks[0].formFields[0].kind == ffkEmail
+    check blocks[0].formFields[0].placeholder == "Email"
+    check blocks[0].formFields[0].required
+    check blocks[0].formFields[1].kind == ffkText
+    check blocks[0].formFields[2].kind == ffkSelect
+    check blocks[0].formFields[2].options == @["Payments", "Account", "Software"]
+    check blocks[0].formFields[3].kind == ffkTextarea
+    check blocks[0].formFields[4].kind == ffkCheckbox
+    check not blocks[0].formFields[4].required
+
+  test ":::form submit defaults + malformed lines are handled safely":
+    # No submit= attr -> a sensible default label; a stray non-@field line is
+    # ignored; an unknown type falls back to a plain text input; nothing raises.
+    let raw = ":::form\n" &
+      "Some stray prose that is not a field.\n" &
+      "@field name=\"Email\" label=\"Email\" type=wobble\n" &
+      "@field name=\"pw\" label=\"Password\" type=password\n" &
+      ":::"
+    let blocks = parseMarkdownBlocks(raw)
+    check blocks.len == 1
+    check blocks[0].kind == bkForm
+    check blocks[0].formSubmit == "Submit"       # default
+    check blocks[0].formFields.len == 2           # the stray line is ignored
+    check blocks[0].formFields[0].kind == ffkText # unknown type -> text
+    check blocks[0].formFields[1].kind == ffkPassword
+
   test "components parse alongside other blocks in document order":
     let raw = "Intro paragraph.\n\n:::button href=\"x.md\"\nGo\n:::\n\nAfter."
     let blocks = parseMarkdownBlocks(raw)
@@ -161,6 +204,7 @@ suite "docs content components -- framework default is unchanged (Tier 1, dual-t
     check not html.contains("docs-md-faq")
     check not html.contains("docs-md-button")
     check not html.contains("docs-md-video")
+    check not html.contains("docs-md-form")
 
   test "a plain markdown page renders NONE of the component markup (MockRenderer)":
     let raw = "## Heading\n\nA paragraph.\n\n:::warning\nCareful.\n:::\n"
@@ -352,6 +396,68 @@ suite "docs content components -- SSR string rendering (Tier 2, dual-target)":
     check not html.contains("\"><script")  # no attribute breakout into a real tag
     # The output carries exactly one tag beyond the wrapper div: the iframe.
     check html.split("<iframe").len == 2
+
+  test ":::form serializes a semantic <form> with labeled inputs/select/textarea/checkbox + submit":
+    let raw = ":::form action=\"/support\" method=\"get\" submit=\"Send message\"\n" &
+      "@field name=\"Email\" label=\"Email address\" type=email required\n" &
+      "@field name=\"Category\" label=\"Category\" type=select options=\"Payments,Account\"\n" &
+      "@field name=\"Message\" label=\"Message\" type=textarea\n" &
+      "@field name=\"remember\" label=\"Remember me\" type=checkbox\n" &
+      ":::"
+    let html = renderMarkdownBodyHtml(parseMarkdownBlocks(raw))
+    check html.contains("<form class=\"" & formClass & "\" action=\"/support\" method=\"get\">")
+    # Labeled text/email input, id/for bound.
+    check html.contains("<label class=\"" & formLabelClass & "\" for=\"docs-form-Email\">Email address</label>")
+    check html.contains("<input class=\"" & formInputClass & "\" type=\"email\" name=\"Email\" id=\"docs-form-Email\" required />")
+    # Select with a leading empty placeholder option + the authored options.
+    check html.contains("<select class=\"" & formInputClass & " " & formSelectClass &
+      "\" name=\"Category\" id=\"docs-form-Category\">")
+    check html.contains("<option value=\"\">")
+    check html.contains("<option value=\"Payments\">Payments</option>")
+    # Textarea.
+    check html.contains("<textarea class=\"" & formInputClass & " " & formTextareaClass &
+      "\" name=\"Message\" id=\"docs-form-Message\"></textarea>")
+    # Checkbox row wraps its label.
+    check html.contains("<div class=\"" & formRowClass & " " & formRowCheckboxClass & "\">")
+    check html.contains("<input type=\"checkbox\" class=\"" & formCheckInputClass &
+      "\" name=\"remember\" id=\"docs-form-remember\" />")
+    # Submit button reuses the shared button token.
+    check html.contains("<button type=\"submit\" class=\"" & buttonClass & " " & formSubmitClass &
+      "\">Send message</button>")
+
+  test ":::form renders each field on the MockRenderer (input/select/textarea/submit)":
+    let raw = ":::form action=\"/support\" submit=\"Go\"\n" &
+      "@field name=\"Email\" label=\"Email\" type=email\n" &
+      "@field name=\"Category\" label=\"Category\" type=select options=\"A,B\"\n" &
+      "@field name=\"Message\" label=\"Message\" type=textarea\n" &
+      ":::"
+    let r = MockRenderer()
+    let root = renderMarkdownBody[MockRenderer, MockNode](r, parseMarkdownBlocks(raw))
+    let form = findWhere(root, proc(n: MockNode): bool =
+      n.kind == mnkElement and getAttribute(r, n, "class") == formClass)
+    require form != nil
+    check findByTag(form, "input") != nil
+    check findByTag(form, "select") != nil
+    check findByTag(form, "textarea") != nil
+    let btn = findByTag(form, "button")
+    require btn != nil
+    check getAttribute(r, btn, "type") == "submit"
+    check textContent(btn) == "Go"
+
+  test ":::form escapes hostile labels, options, and the action (element text <>-escaped)":
+    # Author strings reaching element-text context (label, option text) are
+    # fully `<`/`>`/`&`-escaped by `escapeHtml`; attribute context (action,
+    # option value) is `"`/`&`-escaped by `escapeAttr` (OWASP-correct -- `<`/`>`
+    # are inert inside a quoted attribute). So no injected markup ever becomes a
+    # real element.
+    let raw = ":::form action=\"x&y\"\n" &
+      "@field name=\"cat\" label=\"A <script> & B\" type=select options=\"<b>,two\"\n" &
+      ":::"
+    let html = renderMarkdownBodyHtml(parseMarkdownBlocks(raw))
+    check html.contains("A &lt;script&gt; &amp; B")      # label text escaped
+    check html.contains("action=\"x&amp;y\"")            # action attr &-escaped
+    check html.contains(">&lt;b&gt;</option>")           # option TEXT <>-escaped
+    check not html.contains("<script>")                  # no raw injected element
 
   test "card title, hero title and faq question are HTML-escaped":
     let cardsHtml = renderMarkdownBodyHtml(parseMarkdownBlocks(

@@ -332,7 +332,12 @@ proc buildNavPages*(manifest: RouteManifest;
   var pages: seq[NavPage] = @[]
   for entry in manifest.entries:
     try:
-      pages.add navPage(entry, loadEntry(entry.meta.contentPath))
+      let ce = loadEntry(entry.meta.contentPath)
+      ## A `hidden: true` page stays fully routed/rendered (it is still a real
+      ## manifest entry) but is dropped from the nav graph, so a header-linked
+      ## utility page (FAQ/Support/Sign In) never appears in the docs sidebar.
+      if ce.front.hidden: continue
+      pages.add navPage(entry, ce)
     except CatchableError:
       discard
   sortNavPages(pages)

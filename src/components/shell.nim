@@ -84,6 +84,13 @@ const
   errorFallbackText* = "This page could not be rendered."
   logoClass* = "docs-logo"          ## M3 (Gap A): the header logo `<img>`.
   logoLinkClass* = "docs-logo-link" ## M3 (Gap A): the optional logo link wrapper.
+  # Minimal-chrome (auth-style) page layout: a full-page section with only a
+  # logo at the top and a centered card, no sidebar/header-nav/TOC/footer
+  # (WebFlow `.section-fullpage` + `.nav-secondary` + `.container-center`).
+  frameMinimalClass* = "docs-frame--minimal" ## added ALONGSIDE `frameClass`.
+  minimalNavClass* = "docs-minimal-nav"       ## the logo-only top bar.
+  mainMinimalClass* = "docs-main--minimal"    ## added ALONGSIDE `mainClass`.
+  minimalCardClass* = "docs-minimal-card"     ## the centered auth card.
   # metacraft-theme-parity M1 chrome classes (all default-off; see `DocsChrome`).
   headerNavClass* = "docs-header-nav"        ## Gap B: header nav-button group (WebFlow `.ct-nav-links`).
   headerNavBtnClass* = "docs-header-nav-btn"  ## Gap B: one header nav button (WebFlow `.ct-nav-btn`).
