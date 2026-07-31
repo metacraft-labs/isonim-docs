@@ -433,7 +433,7 @@ suite "docs JS live search (Tier 3, JS-target)":
     check classOf(liAt(list, 0)).contains(searchResultActiveClass)
     check not classOf(liAt(list, 1)).contains(searchResultActiveClass)
 
-  test "a query matching nothing re-renders the distinct empty-state shape":
+  test "a query matching nothing re-renders the no-results message INSIDE the results container":
     let rootEl = document.getElementById("isonim-docs-search-root-empty")
     discard render(proc(): Node = createRouteApp("/"), rootEl)
     let inputEl = searchInputOf(rootEl)
@@ -442,10 +442,16 @@ suite "docs JS live search (Tier 3, JS-target)":
     setValue(inputEl, "xyznonexistentterm")
     dispatchInputEvent(inputEl)
 
+    # WebFlow parity: the no-results message is an <li class="docs-search-empty">
+    # nested INSIDE the `.docs-search-results` <ul> dropdown card, not a bare
+    # floating <div> sibling.
     let content = wrapper.firstChild
-    check tagOf(content) == "div"
-    check classOf(content) == searchEmptyClass
-    check ($content.textContent).contains("xyznonexistentterm")
+    check tagOf(content) == "ul"
+    check classOf(content) == searchResultsClass
+    let empty = content.firstChild
+    check tagOf(empty) == "li"
+    check classOf(empty) == searchEmptyClass
+    check ($empty.textContent).contains("xyznonexistentterm")
 
   test "clearing the query back to empty re-renders an empty result list, not the empty-state shape":
     let rootEl = document.getElementById("isonim-docs-search-root-clear")

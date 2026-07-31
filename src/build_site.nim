@@ -263,6 +263,13 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
     usedClasses.incl extractUsedClasses(html)
     info "ssg_page_rendered", route = routePath, status = status, bytes = html.len
 
+  ## Safelist the client-injected live-search result classes (see
+  ## `search_view.searchRuntimeClasses`): they aren't in any static page's
+  ## HTML, so without this the purge would strip their styling and live
+  ## search results would render unstyled.
+  for cls in searchRuntimeClasses:
+    usedClasses.incl cls
+
   var hrefRewrites = hashAndPurgeAssets(outDir, usedClasses)
 
   ## M5 deliverable 2 (deferred search index): emit the real, site-wide

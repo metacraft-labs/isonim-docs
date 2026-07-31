@@ -61,9 +61,13 @@ suite "docs search ViewModel rendering -- MockRenderer (Tier 2, dual-target)":
     check textContent(links[0]) == "The ui DSL"
     check getAttribute(r, links[1], "href") == "/guide/signals-effects"
 
+    # WebFlow parity: section labels are HUMANIZED (raw key -> display label,
+    # `_`/`-`/`/` -> space, title-cased) via `navigation_vm.humanizeKey`, so a
+    # raw "guide" key renders as "Guide" (WebFlow shows "Usage Guide", not
+    # "usage_guide").
     let sections = findAllByTag(root, "span")
     check sections.len == 2
-    check textContent(sections[0]) == "guide"
+    check textContent(sections[0]) == "Guide"
 
   test "renderSearchResultsContent: marks exactly the keyboard cursor's result as selected":
     let r = MockRenderer()
@@ -75,13 +79,19 @@ suite "docs search ViewModel rendering -- MockRenderer (Tier 2, dual-target)":
     check getAttribute(r, items[1], "class").contains(searchResultActiveClass)
     check getAttribute(r, items[1], "aria-selected") == "true"
 
-  test "renderSearchResultsContent: a query with zero results renders the distinct empty-state shape, not an empty list":
+  test "renderSearchResultsContent: a query with zero results renders the no-results message INSIDE the styled results container":
     let r = MockRenderer()
     let vm = SearchViewModel(query: "xyz", results: @[], cursor: -1)
     let root = renderSearchResultsContent[MockRenderer, MockNode](r, vm)
-    check getAttribute(r, root, "class") == searchEmptyClass
-    check textContent(root) == "No results for \"xyz\""
-    check findByTag(root, "ul") == nil
+    # WebFlow parity: the "No results" message is an <li class="docs-search-empty">
+    # nested INSIDE the `.docs-search-results` dropdown container (so it inherits
+    # the container's border/shadow/positioning card -- WebFlow `.ct-result-empty`
+    # inside `.ct-search-results`), NOT a bare floating sibling <div>.
+    check getAttribute(r, root, "class") == searchResultsClass
+    let empties = findAllByTag(root, "li")
+    check empties.len == 1
+    check getAttribute(r, empties[0], "class") == searchEmptyClass
+    check textContent(empties[0]) == "No results for \"xyz\""
 
 suite "docs search ViewModel rendering -- SSR string (Tier 2, dual-target)":
   test "renderSearchBoxHtml: an untouched search box serializes an empty input and an empty result list":
@@ -103,12 +113,25 @@ suite "docs search ViewModel rendering -- SSR string (Tier 2, dual-target)":
     check html.contains("aria-selected=\"true\"")
     check html.contains(searchResultActiveClass)
     check html.contains("<a class=\"" & searchResultLinkClass & "\" href=\"/guide/dsl\">The ui DSL</a>")
-    check html.contains("<span class=\"" & searchResultSectionClass & "\">guide</span>")
+    # WebFlow parity: humanized section label ("guide" -> "Guide").
+    check html.contains("<span class=\"" & searchResultSectionClass & "\">Guide</span>")
 
-  test "renderSearchResultsContentHtml: an empty-result query renders the escaped empty-state message":
+  test "renderSearchResultsContentHtml: an empty-result query nests the escaped no-results message inside the results container":
     let vm = SearchViewModel(query: "<script>", results: @[])
     let html = renderSearchResultsContentHtml(vm)
-    check html == "<div class=\"" & searchEmptyClass & "\">No results for \"&lt;script&gt;\"</div>"
+    # WebFlow parity: the escaped "No results" message is an <li> INSIDE the
+    # `.docs-search-results` <ul> (styled dropdown card), not a bare <div>.
+    check html == "<ul class=\"" & searchResultsClass & "\" role=\"listbox\">" &
+      "<li class=\"" & searchEmptyClass & "\">No results for \"&lt;script&gt;\"</li></ul>"
+
+  test "renderSearchResultsContentHtml: a raw multi-word section key is humanized into a display label":
+    # WebFlow parity: "usage_guide" -> "Usage Guide" (title-cased, `_` -> space).
+    let vm = SearchViewModel(query: "cli", results: @[
+      SearchResult(routePath: "/usage_guide/cli", title: "CLI",
+        section: "usage_guide", score: 100)])
+    let html = renderSearchResultsContentHtml(vm)
+    check html.contains("<span class=\"" & searchResultSectionClass & "\">Usage Guide</span>")
+    check not html.contains(">usage_guide<")
 
   test "renderSearchBootstrapHtml: embeds the real search index as a stable-id JSON script tag":
     let index = SearchIndex(entries: @[

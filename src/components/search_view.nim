@@ -22,6 +22,7 @@
 import isonim/ssr/escape
 import ../core/search_vm
 import ../core/config
+import ../core/navigation_vm  # humanizeKey: raw section keys -> display labels
 
 const
   searchRegionClass* = "docs-search"
@@ -66,22 +67,44 @@ const
     ## href rewrite), so the overlay references the cache-busted artifact
     ## without any renderer needing to know the hash.
 
+const searchRuntimeClasses* = [
+  ## CSS-purge SAFELIST: the search-result classes the CLIENT injects at
+  ## runtime (a query's ranked `<li>`s, the no-results `<li>`, the overlay
+  ## snippet/mark spans). They never appear in the STATIC SSR HTML (the SSR
+  ## renders only an EMPTY results `<ul>` -- no query yet), so the SSG's
+  ## HTML-scanning purge (`asset_pipeline.purgeCss`) would otherwise strip
+  ## their rules and leave live search results unstyled. `build_site` folds
+  ## this set into the purge's `usedClasses` so the rules survive.
+  searchResultItemClass,
+  searchResultActiveClass,
+  searchResultLinkClass,
+  searchResultSectionClass,
+  searchResultSnippetClass,
+  searchMarkClass,
+  searchEmptyClass,
+]
+
 # --- MockRenderer / browser tree mode -----------------------------------
 
 proc renderSearchResultsContent*[R, E](r: R; vm: SearchViewModel): E =
-  ## The ranked result list, or the distinct empty-state shape when
-  ## the query has text but matched nothing -- an untouched (empty
-  ## query) search box renders an empty `<ul>` with no empty-state
-  ## message, since "no query yet" and "query with zero matches" are
-  ## different states a reader shouldn't confuse.
-  if vm.query.len > 0 and vm.results.len == 0:
-    let empty = r.createElement("div")
-    r.setAttribute(empty, "class", searchEmptyClass)
-    r.appendChild(empty, r.createTextNode("No results for \"" & vm.query & "\""))
-    return empty
+  ## The ranked result list. When the query has text but matched
+  ## nothing, the "no results" message renders as a distinct `<li>`
+  ## INSIDE the same styled `.docs-search-results` container (so it
+  ## inherits the dropdown's border/shadow/positioning, matching
+  ## WebFlow's `.ct-result-empty` "No results found" nested inside
+  ## `.ct-search-results`) -- NOT as a bare floating sibling. An
+  ## untouched (empty query) box still yields an EMPTY `<ul>` (the CSS
+  ## `:empty` rule hides it), so "no query yet" and "query with zero
+  ## matches" stay visually distinct.
   let list = r.createElement("ul")
   r.setAttribute(list, "class", searchResultsClass)
   r.setAttribute(list, "role", "listbox")
+  if vm.query.len > 0 and vm.results.len == 0:
+    let empty = r.createElement("li")
+    r.setAttribute(empty, "class", searchEmptyClass)
+    r.appendChild(empty, r.createTextNode("No results for \"" & vm.query & "\""))
+    r.appendChild(list, empty)
+    return list
   for i, res in vm.results:
     let li = r.createElement("li")
     let isActive = i == vm.cursor
@@ -99,7 +122,7 @@ proc renderSearchResultsContent*[R, E](r: R; vm: SearchViewModel): E =
     if res.section.len > 0:
       let sectionEl = r.createElement("span")
       r.setAttribute(sectionEl, "class", searchResultSectionClass)
-      r.appendChild(sectionEl, r.createTextNode(res.section))
+      r.appendChild(sectionEl, r.createTextNode(humanizeKey(res.section)))
       r.appendChild(li, sectionEl)
     r.appendChild(list, li)
   list
@@ -131,10 +154,15 @@ proc renderSearchBox*[R, E](r: R; vm: SearchViewModel): E =
 # --- SSR string mode ------------------------------------------------------
 
 proc renderSearchResultsContentHtml*(vm: SearchViewModel): string =
-  if vm.query.len > 0 and vm.results.len == 0:
-    return "<div class=\"" & searchEmptyClass & "\">No results for \"" &
-      escapeHtml(vm.query) & "\"</div>"
+  ## SSR string mode -- same shape as `renderSearchResultsContent`: the
+  ## "no results" message is an `<li class="docs-search-empty">` INSIDE
+  ## the `.docs-search-results` container, not a bare sibling `<div>`.
   result = "<ul class=\"" & searchResultsClass & "\" role=\"listbox\">"
+  if vm.query.len > 0 and vm.results.len == 0:
+    result.add "<li class=\"" & searchEmptyClass & "\">No results for \"" &
+      escapeHtml(vm.query) & "\"</li>"
+    result.add "</ul>"
+    return
   for i, res in vm.results:
     let isActive = i == vm.cursor
     let itemClass =
@@ -146,7 +174,7 @@ proc renderSearchResultsContentHtml*(vm: SearchViewModel): string =
       escapeAttr(res.routePath) & "\">" & escapeHtml(res.title) & "</a>"
     if res.section.len > 0:
       result.add "<span class=\"" & searchResultSectionClass & "\">" &
-        escapeHtml(res.section) & "</span>"
+        escapeHtml(humanizeKey(res.section)) & "</span>"
     result.add "</li>"
   result.add "</ul>"
 
@@ -179,15 +207,16 @@ proc renderSearchOverlayResultsContent*[R, E](r: R; vm: SearchViewModel): E =
   ## `renderSearchResultsContent` but each result additionally carries a
   ## matched-term-highlighted snippet of its summary, built from
   ## `highlightMatches` into `searchMarkClass`-tagged `<mark>` elements.
-  if vm.query.len > 0 and vm.results.len == 0:
-    let empty = r.createElement("div")
-    r.setAttribute(empty, "class", searchEmptyClass)
-    r.appendChild(empty, r.createTextNode("No results for \"" & vm.query & "\""))
-    return empty
   let queryTokens = tokenize(vm.query)
   let list = r.createElement("ul")
   r.setAttribute(list, "class", searchResultsClass)
   r.setAttribute(list, "role", "listbox")
+  if vm.query.len > 0 and vm.results.len == 0:
+    let empty = r.createElement("li")
+    r.setAttribute(empty, "class", searchEmptyClass)
+    r.appendChild(empty, r.createTextNode("No results for \"" & vm.query & "\""))
+    r.appendChild(list, empty)
+    return list
   for i, res in vm.results:
     let li = r.createElement("li")
     let isActive = i == vm.cursor
@@ -205,7 +234,7 @@ proc renderSearchOverlayResultsContent*[R, E](r: R; vm: SearchViewModel): E =
     if res.section.len > 0:
       let sectionEl = r.createElement("span")
       r.setAttribute(sectionEl, "class", searchResultSectionClass)
-      r.appendChild(sectionEl, r.createTextNode(res.section))
+      r.appendChild(sectionEl, r.createTextNode(humanizeKey(res.section)))
       r.appendChild(li, sectionEl)
     if res.summary.len > 0:
       let snippet = r.createElement("span")
@@ -227,11 +256,13 @@ proc renderSearchOverlayResultsContentHtml*(vm: SearchViewModel): string =
   ## `renderSearchOverlayResultsContent` (matched terms wrapped in
   ## `<mark>...</mark>`, built from the same `highlightMatches`
   ## segmentation, so the two paths stay byte-parity in structure).
-  if vm.query.len > 0 and vm.results.len == 0:
-    return "<div class=\"" & searchEmptyClass & "\">No results for \"" &
-      escapeHtml(vm.query) & "\"</div>"
   let queryTokens = tokenize(vm.query)
   result = "<ul class=\"" & searchResultsClass & "\" role=\"listbox\">"
+  if vm.query.len > 0 and vm.results.len == 0:
+    result.add "<li class=\"" & searchEmptyClass & "\">No results for \"" &
+      escapeHtml(vm.query) & "\"</li>"
+    result.add "</ul>"
+    return
   for i, res in vm.results:
     let isActive = i == vm.cursor
     let itemClass =
@@ -243,7 +274,7 @@ proc renderSearchOverlayResultsContentHtml*(vm: SearchViewModel): string =
       escapeAttr(res.routePath) & "\">" & escapeHtml(res.title) & "</a>"
     if res.section.len > 0:
       result.add "<span class=\"" & searchResultSectionClass & "\">" &
-        escapeHtml(res.section) & "</span>"
+        escapeHtml(humanizeKey(res.section)) & "</span>"
     if res.summary.len > 0:
       result.add "<span class=\"" & searchResultSnippetClass & "\">"
       for seg in highlightMatches(res.summary, queryTokens):
