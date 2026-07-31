@@ -22,6 +22,10 @@ build:
 dev-docs port='8000' host='127.0.0.1':
     nim c -r --hints:off src/dev.nim {{port}} {{host}}
 
+# Live docs server bound to 0.0.0.0 for your private LAN (trusted networks only).
+dev-docs-lan port='8000':
+    @just dev-docs {{port}} 0.0.0.0
+
 # Open the running docs server in a browser (Linux xdg-open / macOS open).
 open-docs port='8000':
     @xdg-open http://localhost:{{port}}/ 2>/dev/null || open http://localhost:{{port}}/ 2>/dev/null || echo "open http://localhost:{{port}}/ manually"
