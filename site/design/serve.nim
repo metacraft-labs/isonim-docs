@@ -27,12 +27,43 @@ when defined(js):
 import std/[os, json, strutils, asyncdispatch]
 import dev_server
 import core/config
+import isonim/editor                 # bindingSidecarRelPath, parseBindingSidecar
 import ../src/theme_tokens          # docsDesignSystemPath
-import ./dtcg_workspace             # docsSaveEndpoint + (re-exported) applyDocsTokenEdit
+import ./dtcg_workspace             # docsSaveEndpoint + docsBindingsEndpoint/Global + applyDocsTokenEdit
 
 const
   designDir = currentSourcePath().parentDir()   ## .../isonim-docs/site/design
   siteDir = designDir.parentDir()                ## .../isonim-docs/site
+  bindingsSidecarPath = designDir / bindingSidecarRelPath
+    ## VBIND-M7: `.../isonim-docs/site/design/.isonim/bindings.json` -- the
+    ## design pilot's binding sidecar. Explicitly NOT the DTCG token source.
+
+proc readDesignBindingsSidecar(): string =
+  ## VBIND-M7 LOAD (server side): read the design pilot's binding sidecar if it
+  ## exists, else "". The bytes are embedded verbatim into the editor page so
+  ## the filesystem-less JS client can rehydrate its bindings.
+  if fileExists(bindingsSidecarPath): readFile(bindingsSidecarPath) else: ""
+
+proc injectBindingsGlobal*(html, sidecarJson: string): string =
+  ## VBIND-M7: splice `window.__ISONIM_BINDINGS__ = <json>;` in just before the
+  ## editor bundle `<script src>` (falling back to before `</body>`), so the
+  ## client can read it synchronously at startup, ahead of building the
+  ## workspace. An empty sidecar injects nothing (byte-unchanged page). The JSON
+  ## is embedded as a JS string literal (via std/json's `escapeJson`) and read
+  ## back through `JSON.parse`-free `loadBindingSidecar`, so `</script>` in the
+  ## payload cannot break out of the script element.
+  if sidecarJson.strip().len == 0:
+    return html
+  let script = "<script>window." & docsBindingsGlobal & "=JSON.parse(" &
+    escapeJson(sidecarJson) & ");</script>"
+  let marker = "<script src=\"/assets/design_editor.js\">"
+  let idx = html.find(marker)
+  if idx >= 0:
+    html[0 ..< idx] & script & html[idx .. ^1]
+  else:
+    let bidx = html.rfind("</body>")
+    if bidx >= 0: html[0 ..< bidx] & script & html[bidx .. ^1]
+    else: html & script
 
 proc editorPageHtml(): string =
   ## The editor host page. Read from `design/index.html` (whose `<script src>`
@@ -40,11 +71,14 @@ proc editorPageHtml(): string =
   ## from `build/` under `/assets/`). The live-reload client is spliced in by
   ## `dev_server`'s `injectLiveReload` around this.
   let indexPath = designDir / "index.html"
-  if fileExists(indexPath): readFile(indexPath)
-  else:
-    "<!doctype html><html><head><meta charset=\"utf-8\">" &
-    "<title>Metacraft Docs Design System — Live Editor</title></head>" &
-    "<body><script src=\"/assets/design_editor.js\"></script></body></html>"
+  let base =
+    if fileExists(indexPath): readFile(indexPath)
+    else:
+      "<!doctype html><html><head><meta charset=\"utf-8\">" &
+      "<title>Metacraft Docs Design System — Live Editor</title></head>" &
+      "<body><script src=\"/assets/design_editor.js\"></script></body></html>"
+  # VBIND-M7: embed the persisted binding sidecar so the JS client rehydrates.
+  injectBindingsGlobal(base, readDesignBindingsSidecar())
 
 proc renderEditor(path: string): tuple[status: int; html: string] =
   ## Serve the single-page editor for any non-asset, non-save path. `dev_server`
@@ -79,9 +113,43 @@ proc docsSaveHandler(body: string): SaveResult =
     SaveResult(status: 422, contentType: "application/json; charset=utf-8",
       body: """{"ok":false,"error":""" & escapeJson(e.msg) & "}")
 
+proc writeBindingsSidecar*(sidecarPath, body: string): SaveResult =
+  ## VBIND-M7 SAVE: persist the POSTed binding sidecar JSON to `sidecarPath`.
+  ## A malformed / non-object payload is REJECTED with a 4xx and the sidecar left
+  ## BYTE-IDENTICAL -- mirroring the M4b save route (`docsSaveHandler`), which
+  ## never lets a bad payload touch the token file. This matters: `parseBindingSidecar`
+  ## degrades corrupt input to *empty*, so writing its result unconditionally would
+  ## let a single stray/hostile POST silently CLOBBER an existing good sidecar with
+  ## an empty one (data loss). A well-formed payload -- including a legitimately
+  ## EMPTY one (the user cleared every binding) -- is re-serialized through the
+  ## framework's own `parseBindingSidecar`/`bindingSidecarJson` and only the
+  ## canonical bytes are written. The DTCG token source is never in this path.
+  ## Creates the `.isonim/` dir on demand.
+  var doc: JsonNode
+  try:
+    doc = parseJson(body)
+  except CatchableError as e:
+    return SaveResult(status: 400, contentType: "application/json; charset=utf-8",
+      body: """{"ok":false,"error":"invalid JSON: """ & e.msg.escapeJsonUnquoted & """"}""")
+  if doc.kind != JObject:
+    return SaveResult(status: 400, contentType: "application/json; charset=utf-8",
+      body: """{"ok":false,"error":"sidecar must be a JSON object"}""")
+  let parsed = parseBindingSidecar(body)
+  let canonical = bindingSidecarJson(parsed.bindings, parsed.history)
+  createDir(sidecarPath.parentDir)
+  writeFile(sidecarPath, canonical)
+  SaveResult(status: 200, contentType: "application/json; charset=utf-8",
+    body: """{"ok":true,"bindings":""" & $parsed.bindings.len & "}")
+
+proc docsBindingsHandler(body: string): SaveResult =
+  ## The `just design` server's bindings route: write the editor's binding
+  ## sidecar to `design/.isonim/bindings.json`.
+  writeBindingsSidecar(bindingsSidecarPath, body)
+
 proc newDesignSaveServer*(): DevServer =
   ## The `just design` editor + save server: serves the editor page, the built
-  ## JS bundle and docs stylesheet under `/assets/`, and the M4b save route.
+  ## JS bundle and docs stylesheet under `/assets/`, the M4b save route, and the
+  ## VBIND-M7 bindings-sidecar route.
   ## Exposed so a test can drive the exact wiring without binding a socket.
   newDevServer(
     contentDir = "",                      # no content routes; render is overridden
@@ -89,7 +157,9 @@ proc newDesignSaveServer*(): DevServer =
     render = renderEditor,
     assetsDirs = @[designDir / "build", siteDir / "assets", siteDir / "static"],
     saveHandler = docsSaveHandler,
-    savePath = docsSaveEndpoint)
+    savePath = docsSaveEndpoint,
+    bindingsHandler = docsBindingsHandler,
+    bindingsPath = docsBindingsEndpoint)
 
 when isMainModule:
   let port = if paramCount() >= 1: parseInt(paramStr(1)) else: 8080

@@ -32,13 +32,28 @@ proc main() =
   let layer = isonimDocsTokenLayer()
 
   var editor: EditorVM
-  let ws = metacraftEditorWorkspace(layer, ts,
+  var ws = metacraftEditorWorkspace(layer, ts,
     tokensAccessor = proc(): seq[FoundationTokenEntry] =
       if editor.isNil: @[] else: editor.foundations.tokens.val,
     # M4b: the editor's foundation "Save" POSTs each edit to the dev-server save
     # route (same-origin when served by `design/serve.nim`), which patches the
     # docs token file and lets `just dev-docs` hot-reload the live docs.
     foundationSave = docsFetchPersist())
+
+  # VBIND-M7 LOAD: the save server embeds `design/.isonim/bindings.json` as
+  # `window.__ISONIM_BINDINGS__` ahead of this bundle. Seed the workspace's
+  # binding metadata from it BEFORE mounting, so `applyWorkspace` rehydrates the
+  # linked chips + previously-linked history. Absent/malformed ⇒ empty (no-op).
+  ws.loadBindingSidecar(readInjectedBindingsSidecar())
+
   editor = mountEditor(ws)
+
+  # VBIND-M7 SAVE: on every bind/detach, snapshot the live binding metadata and
+  # POST the serialized sidecar to the dev-server bindings route, which writes
+  # `design/.isonim/bindings.json`. This NEVER touches the DTCG token source.
+  editor.inspector.onBindingsChanged = proc() {.closure.} =
+    let meta = editor.collectWorkspaceBindingMetadata()
+    postDocsBindingsSave(docsBindingsEndpoint,
+      bindingSidecarJson(meta.bindings, meta.history))
 
 main()

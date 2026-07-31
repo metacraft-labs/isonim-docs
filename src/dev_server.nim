@@ -46,6 +46,13 @@ const
     ## like `defaultLiveReloadPath` so it can never collide with a content route.
     ## Inert unless a consumer wires a `saveHandler` (default docs serving for the
     ## three consumers is byte-unchanged).
+  defaultBindingsPath* = "/__isonim_bindings"
+    ## A SECOND opt-in POST endpoint (VBIND-M7), parallel to `defaultSavePath`,
+    ## for a consumer that persists a distinct payload on its own route -- e.g.
+    ## the design editor writing its variable-binding SIDECAR while the primary
+    ## save route patches the design-token file. Inert unless a `bindingsHandler`
+    ## is wired, so every existing consumer (and the three docs consumers) is
+    ## byte-unchanged.
 
 type
   SaveResult* = object
@@ -118,6 +125,15 @@ type
       ## without altering the three docs consumers' default behaviour.
     savePath*: string
       ## The path `saveHandler` answers on (default `defaultSavePath`).
+    bindingsHandler*: SaveHandler
+      ## VBIND-M7: an OPTIONAL second POST handler mounted at `bindingsPath`,
+      ## parallel to `saveHandler`. When set, a POST to that path is dispatched
+      ## to this closure (which writes the variable-binding sidecar) instead of
+      ## being rendered as a route; when `nil` (default) a POST to the bindings
+      ## path 404s and nothing else changes -- so the design harness can opt into
+      ## sidecar persistence without altering any other consumer's behaviour.
+    bindingsPath*: string
+      ## The path `bindingsHandler` answers on (default `defaultBindingsPath`).
     clientEntry*: string
       ## M1 (client-JS bundle): OPTIONAL path to the consumer's `nim js` mount
       ## entry (e.g. `src/main.nim`). When set, a request for `/assets/app.js`
@@ -267,6 +283,8 @@ proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
                     watchPaths: seq[string] = @[];
                     saveHandler: SaveHandler = nil;
                     savePath = defaultSavePath;
+                    bindingsHandler: SaveHandler = nil;
+                    bindingsPath = defaultBindingsPath;
                     clientEntry = ""): DevServer =
   ## Constructs a dev server over `contentDir`, taking the initial snapshot up
   ## front so the first `pollForChanges` reports only genuine edits made after
@@ -288,6 +306,8 @@ proc newDevServer*(contentDir: string; cfg: DocsConfig = docsConfig();
     watchPaths: watchPaths,
     saveHandler: saveHandler,
     savePath: savePath,
+    bindingsHandler: bindingsHandler,
+    bindingsPath: bindingsPath,
     clientEntry: clientEntry)
   # Initial snapshot covers content + the watched files.
   result.snapshot = snapshotContentDir(contentDir)
@@ -402,6 +422,23 @@ proc handleSave*(server: DevServer; body: string): SaveResult =
     result = SaveResult(status: 500, contentType: "text/plain; charset=utf-8",
       body: "save handler failed: " & e.msg)
 
+proc handleBindings*(server: DevServer; body: string): SaveResult =
+  ## VBIND-M7: dispatches a POST bindings `body` to the consumer-supplied
+  ## `bindingsHandler`. Same contract as `handleSave` but on the parallel
+  ## `bindingsPath`: no handler (the default) returns 404 -- so a stray POST can
+  ## never mutate anything -- and a raised handler error becomes a 500 rather
+  ## than dropping the connection. Directly unit-testable without a socket:
+  ## construct a server with a handler, call `handleBindings`, and assert both
+  ## the returned `SaveResult` and the handler's side effect (the written sidecar).
+  if server.bindingsHandler.isNil:
+    return SaveResult(status: 404, contentType: "text/plain; charset=utf-8",
+      body: "bindings endpoint not enabled")
+  try:
+    result = server.bindingsHandler(body)
+  except CatchableError as e:
+    result = SaveResult(status: 500, contentType: "text/plain; charset=utf-8",
+      body: "bindings handler failed: " & e.msg)
+
 proc pollForChanges*(server: DevServer): seq[string] =
   ## The watcher tick: re-snapshot the content dir + the watched files, diff
   ## against the last snapshot, and — if anything changed — adopt the new
@@ -504,6 +541,14 @@ proc processRequest*(server: DevServer; req: Request) {.async.} =
     # A same-origin fetch from the served editor lands here; the handler patches
     # the design-system file and the watcher (if any) reloads dependents.
     let saved = handleSave(server, req.body)
+    await req.respond(saved.status.HttpCode, saved.body,
+      newHttpHeaders({"Content-Type": saved.contentType,
+        "Access-Control-Allow-Origin": "*"}))
+    return
+  if req.url.path == server.bindingsPath and req.reqMethod == HttpPost:
+    # VBIND-M7 opt-in variable-binding sidecar persistence: a same-origin POST
+    # from the served design editor lands here; the handler writes the sidecar.
+    let saved = handleBindings(server, req.body)
     await req.respond(saved.status.HttpCode, saved.body,
       newHttpHeaders({"Content-Type": saved.contentType,
         "Access-Control-Allow-Origin": "*"}))

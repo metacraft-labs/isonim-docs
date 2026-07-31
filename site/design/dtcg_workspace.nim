@@ -47,6 +47,22 @@ const DocsThemeSource* = "site/src/theme_tokens.nim"
   ## FoundationTokenEntry so the editor's "open source" affordance and the
   ## M2 write-back have a real anchor.
 
+const docsBindingsEndpoint* = "/__isonim_bindings"
+  ## VBIND-M7: the dev-server POST route the live editor persists its
+  ## variable-binding SIDECAR to, PARALLEL to `docsSaveEndpoint`. The JS mount
+  ## harness (`design/main.nim`) POSTs the collected binding metadata here on
+  ## every bind/detach; the native save server (`design/serve.nim`) mounts a
+  ## `bindingsHandler` there that writes `design/.isonim/bindings.json`. The DTCG
+  ## token source (`codetracer-docs.tokens.json`) is NEVER written on this route.
+
+const docsBindingsGlobal* = "__ISONIM_BINDINGS__"
+  ## VBIND-M7: the `window` global the save server injects the sidecar JSON into
+  ## (the JS client has no filesystem, so LOADING the sidecar is the server's
+  ## job). `design/serve.nim` reads `design/.isonim/bindings.json` and embeds it
+  ## as `window.__ISONIM_BINDINGS__ = <json>` ahead of the editor bundle;
+  ## `design/main.nim` reads it back and `loadBindingSidecar`s it into the
+  ## workspace BEFORE mounting, so a reload rehydrates the chips.
+
 const docsSaveEndpoint* = "/__isonim_save"
   ## The dev-server POST route the live editor persists a foundation edit to
   ## (M4b). Shared by the JS mount harness (`design/main.nim`, which `fetch`es it
@@ -667,6 +683,27 @@ when defined(js):
     ## The JS harness's `persist`: every foundation Save POSTs to `endpoint`.
     (proc(varName, side, value: string): bool =
       postDocsFoundationSave(endpoint, varName, side, value))
+
+  proc postDocsBindingsSave*(endpoint, sidecarJson: string) =
+    ## VBIND-M7 SAVE: POST the serialized binding sidecar JSON to `endpoint`
+    ## (fire-and-forget, same as the foundation-save POST). The server writes it
+    ## to `design/.isonim/bindings.json`; a reload rehydrates from that file.
+    jsPostJson(endpoint.cstring, sidecarJson.cstring)
+
+  proc readInjectedBindingsSidecar*(): string =
+    ## VBIND-M7 LOAD (client side): read the sidecar JSON the save server
+    ## embedded as `window.__ISONIM_BINDINGS__`. Returns "" when absent (no
+    ## sidecar on the server, or the page was opened `file://` without the
+    ## server), which `loadBindingSidecar` treats as a no-op load.
+    var raw: cstring = ""
+    {.emit: """
+    try {
+      if (typeof window !== 'undefined' && window.__ISONIM_BINDINGS__) {
+        `raw` = window.__ISONIM_BINDINGS__;
+      }
+    } catch (e) {}
+    """.}
+    $raw
 
 # ---------------------------------------------------------------------------
 # Full workspace assembly
