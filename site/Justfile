@@ -1,9 +1,11 @@
 # isonim-docs/site -- task entry points for the framework's own docs site
 # (mirrors ../../isonim/docs/users/Justfile's style).
 #
-# Every recipe assumes the IsoNim dev shell is active. From a clean
-# checkout:
-#   nix develop ../../isonim -c just --justfile site/Justfile --working-directory site build
+# Every recipe runs inside isonim-docs's OWN dev shell. With direnv it is
+# already active (see ../.envrc -- it uses this repo's own flake, which
+# declares isonim as a dependency and reuses its toolchain). Without direnv,
+# prefix a recipe with this repo's own flake -- never isonim's:
+#   nix develop . -c just --justfile site/Justfile --working-directory site build
 
 test:
     nim c -r tests/test_site_builds.nim

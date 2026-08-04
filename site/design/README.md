@@ -10,8 +10,9 @@ self-docs).
 
 ## Launch
 
-From `isonim-docs/site/` (inside the IsoNim dev shell — `nix develop
-../../isonim`):
+From `isonim-docs/site/` (inside isonim-docs's own dev shell — activated by
+direnv, or `nix develop` from the `isonim-docs` repo root; isonim is a declared
+dependency of that shell, so there is no need to `nix develop ../../isonim`):
 
 ```bash
 just design                   # build the editor JS + serve at http://127.0.0.1:8080

@@ -12,18 +12,30 @@ built with isonim-docs — i.e. the framework documents itself — and it also
 
 ## Prerequisites
 
-Every task runs inside the **IsoNim Nix dev shell**. Enter it once…
+Every task runs inside **isonim-docs's own Nix dev shell**. isonim is a
+declared dependency of this repo's flake (`../flake.nix`), whose dev shell —
+Nim, nimble, nodejs, yarn, esbuild, `just` — is reused verbatim, so you never
+have to `nix develop ../../isonim`.
+
+With **direnv** the shell activates automatically on `cd` (see `../.envrc`):
 
 ```bash
 cd isonim-docs/site
-nix develop ../../isonim
 just dev-docs
 ```
 
-…or prefix a single recipe:
+Without direnv, enter the repo's own dev shell once…
 
 ```bash
-nix develop ../../isonim -c just dev-docs
+cd isonim-docs
+nix develop        # this repo's flake; pulls isonim in as a dependency
+cd site && just dev-docs
+```
+
+…or prefix a single recipe from the repo root:
+
+```bash
+nix develop -c just --working-directory site dev-docs
 ```
 
 All commands below assume you are in `isonim-docs/site/` and in the dev shell.
