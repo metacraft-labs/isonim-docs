@@ -1,0 +1,62 @@
+<html><head><meta charset="utf-8" /><script id="docs-theme-bootstrap">(function(){try{var k='isonim-docs-theme';var a='data-theme';var t=localStorage.getItem(k);if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute(a,t);}catch(e){}})();</script><title>Routing — isonim-docs</title><meta name="description" content="How isonim-docs resolves routes -- auto-discovery from content, or an explicit hand-authored manifest." /><link rel="stylesheet" href="/isonim-docs/assets/style.abd2e4b366.css" /><link rel="canonical" href="https://metacraft-labs.github.io/isonim-docs/routing" /><meta property="og:title" content="Routing — isonim-docs" /><meta property="og:description" content="How isonim-docs resolves routes -- auto-discovery from content, or an explicit hand-authored manifest." /><meta property="og:type" content="article" /><meta property="og:url" content="https://metacraft-labs.github.io/isonim-docs/routing" /><meta property="og:site_name" content="isonim-docs" /><meta name="twitter:card" content="summary" /><meta name="twitter:title" content="Routing — isonim-docs" /><meta name="twitter:description" content="How isonim-docs resolves routes -- auto-discovery from content, or an explicit hand-authored manifest." /><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Routing — isonim-docs","description":"How isonim-docs resolves routes -- auto-discovery from content, or an explicit hand-authored manifest.","url":"https://metacraft-labs.github.io/isonim-docs/routing","publisher":{"@type":"Organization","name":"isonim-docs"}}</script></head><body><div class="docs-frame"><a class="docs-skip-link" href="#docs-region-main">Skip to content</a><header id="docs-region-header" class="docs-header"><h1 class="docs-title">Routing</h1><div class="docs-search" role="search"><input type="text" id="docs-search-input" class="docs-search-input" placeholder="Search docs…" aria-label="Search documentation" value=""><div id="docs-search-results-wrapper"><ul class="docs-search-results" role="listbox"></ul></div></div><button type="button" id="docs-theme-toggle" class="docs-theme-toggle" data-theme="light" aria-pressed="false" aria-label="Switch to dark theme">☀</button></header><nav id="docs-region-nav" class="docs-nav"><div class="docs-navigation"><button type="button" class="docs-nav-drawer-toggle" aria-expanded="false" aria-controls="docs-nav-drawer-body" aria-label="Menu">Menu</button><div class="docs-nav-drawer-body" id="docs-nav-drawer-body" data-open="false"><nav class="docs-nav-breadcrumbs" aria-label="breadcrumbs"><ol class="docs-nav-breadcrumb-list"><li class="docs-nav-breadcrumb"><a href="/isonim-docs/">Home</a></li><li class="docs-nav-breadcrumb"><span class="docs-nav-breadcrumb-current" aria-current="page">Routing</span></li></ol></nav><nav class="docs-nav-sidebar" aria-label="sidebar"><div class="docs-nav-section docs-nav-section-expanded" data-nav-key=""><ul class="docs-nav-section-list"><li class="docs-nav-item"><a href="/isonim-docs/">Introduction</a></li><li class="docs-nav-item"><a href="/isonim-docs/getting-started">Getting Started</a></li><li class="docs-nav-item docs-nav-item-active"><a href="/isonim-docs/routing" aria-current="page">Routing</a></li><li class="docs-nav-item"><a href="/isonim-docs/theming">Theming &amp; Design Tokens</a></li><li class="docs-nav-item"><a href="/isonim-docs/markdown">Extended Markdown</a></li><li class="docs-nav-item"><a href="/isonim-docs/navigation-and-search">Navigation &amp; Search</a></li><li class="docs-nav-item"><a href="/isonim-docs/seo">SEO &amp; Error Handling</a></li><li class="docs-nav-item"><a href="/isonim-docs/api-reference">OpenAPI REST Reference</a></li><li class="docs-nav-item"><a href="/isonim-docs/library-reference">Library API Reference</a></li><li class="docs-nav-item"><a href="/isonim-docs/components">Live Component Embedding</a></li><li class="docs-nav-item"><a href="/isonim-docs/tutorials">Tutorials, Versioning &amp; i18n</a></li><li class="docs-nav-item"><a href="/isonim-docs/plugins">Plugins</a></li><li class="docs-nav-item"><a href="/isonim-docs/dev-server">Dev Server &amp; Live Reload</a></li><li class="docs-nav-item"><a href="/isonim-docs/cli">CLI Toolchain</a></li><li class="docs-nav-item"><a href="/isonim-docs/deployment">Deployment (nginx Adapter)</a></li><li class="docs-nav-item"><a href="/isonim-docs/security">CSP &amp; Analytics</a></li><li class="docs-nav-item"><a href="/isonim-docs/features">Feature Index</a></li></ul></div></nav><nav class="docs-nav-toc" aria-label="table of contents"><ul class="docs-nav-toc-list"><li class="docs-nav-toc-item"><a href="#auto-discovery-from-content">Auto-discovery from content</a></li><li class="docs-nav-toc-item"><a href="#explicit-manifests">Explicit manifests</a></li><li class="docs-nav-toc-item"><a href="#matching-and-normalization">Matching and normalization</a></li></ul></nav></div></div></nav><main id="docs-region-main" class="docs-main" tabindex="-1"><div class="docs-md-body"><p class="docs-md-paragraph">A **route manifest** is the single source of truth for route resolution: a typed list of entries (pattern, canonical path, page kind, status, and metadata) plus a typed not-found entry. Both the SSR entry and the SPA mount entry resolve routes through the exact same manifest, so routing never forks per target.</p><p class="docs-md-paragraph">There are two ways to obtain a manifest: let the framework **auto-discover** it from your <code>content/</code> dir (the default), or hand-author an **explicit** one.</p><h2 class="docs-md-heading" id="auto-discovery-from-content">Auto-discovery from content</h2><p class="docs-md-paragraph"><code>buildManifestFromContent</code> walks the content directory and produces one <code>pkMarkdown</code> entry per Markdown file, bound to that file's own derived route, plus one <code>pkRedirect</code> entry per <code>aliases:</code> frontmatter value. This is the framework default: <code>buildSite</code>, <code>renderRoute</code>, and the SPA mount entry all fall back to it when no manifest is passed, so a file-based site never has to maintain a route table by hand.</p><p class="docs-md-paragraph">The pure, in-memory half is <code>buildManifestFromEntries</code>, which turns an already-loaded content graph into a manifest. It applies exactly one rule -- each entry's canonical path is the content file's own derived <code>routePath</code> -- so routing and navigation can never disagree:</p><div class="docs-md-code-block"><button type="button" class="docs-md-code-copy" aria-label="Copy code" data-copied="false">Copy code</button><pre class="docs-md-code-fence"><code class="language-nim runnable">import core/content
+import core/routes
+
+let entries = @[
+  parseContentEntry("---\ntitle: Home\n---\n# Home\n\nWelcome.", "index.md"),
+  parseContentEntry("---\ntitle: Intro\nsection: guide\n---\n# Intro\n\nText.",
+                    "guide/intro.md"),
+  parseContentEntry("---\ntitle: Old\naliases: /legacy-intro\n---\n# Old\n\nX.",
+                    "guide/old.md"),
+]
+
+let manifest = buildManifestFromEntries(entries)
+# One real page entry per file, plus one redirect entry per alias.
+doAssert manifest.entries.len == 4
+
+# Every content page is a pkMarkdown route bound to its own file.
+let home = manifest.entries[0]
+doAssert home.pageKind == pkMarkdown
+doAssert home.canonicalPath == "/"
+doAssert home.meta.contentPath == "index.md"
+
+# The alias became a pkRedirect entry (HTTP 301) pointing at the real route.
+var redirects = 0
+for e in manifest.entries:
+  if e.pageKind == pkRedirect:
+    inc redirects
+    doAssert e.status == rsRedirect
+    doAssert statusCode(e.status) == 301
+doAssert redirects == 1</code></pre></div><h2 class="docs-md-heading" id="explicit-manifests">Explicit manifests</h2><p class="docs-md-paragraph">For full control -- custom patterns, a specific page kind, or a route whose canonical path differs from the file's derived one -- hand-author a <code>RouteManifest</code>. <code>newRouteEntry</code> derives the canonical path and status for you, so every entry agrees on the same normalization rules:</p><div class="docs-md-code-block"><button type="button" class="docs-md-code-copy" aria-label="Copy code" data-copied="false">Copy code</button><pre class="docs-md-code-fence"><code class="language-nim runnable">import core/routes
+
+let manifest = newRouteManifest(@[
+  newRouteEntry("/", pkMarkdown, meta = RouteMeta(contentPath: "index.md")),
+  newRouteEntry("/guide/intro", pkMarkdown,
+    meta = RouteMeta(title: "Intro", contentPath: "guide/intro.md")),
+])
+doAssert manifest.entries.len == 2</code></pre></div><p class="docs-md-paragraph">Pass an explicit manifest to <code>buildSite</code> (or <code>renderRoute</code>) to override auto-discovery entirely:</p><div class="docs-md-code-block"><button type="button" class="docs-md-code-copy" aria-label="Copy code" data-copied="false">Copy code</button><pre class="docs-md-code-fence"><code class="language-nim runnable">import build_site
+import core/config
+import core/routes
+
+let manifest = newRouteManifest(@[
+  newRouteEntry("/", pkMarkdown, meta = RouteMeta(contentPath: "index.md")),
+])
+
+proc buildWithExplicitRoutes(): int =
+  buildSite(contentDir = "content", manifest = manifest, cfg = docsConfig())
+
+when isMainModule:
+  discard buildWithExplicitRoutes()</code></pre></div><h2 class="docs-md-heading" id="matching-and-normalization">Matching and normalization</h2><p class="docs-md-paragraph"><code>matchRoute</code> resolves a path against the manifest, falling back to the typed not-found entry -- it never raises and never returns a zero-value entry. Trailing slashes and a missing leading slash are normalized away, so <code>/guide/intro</code>, <code>guide/intro</code>, and <code>/guide/intro/</code> all match the same entry:</p><div class="docs-md-code-block"><button type="button" class="docs-md-code-copy" aria-label="Copy code" data-copied="false">Copy code</button><pre class="docs-md-code-fence"><code class="language-nim runnable">import core/routes
+
+let manifest = newRouteManifest(@[
+  newRouteEntry("/guide/intro", pkMarkdown,
+    meta = RouteMeta(title: "Intro", contentPath: "guide/intro.md")),
+])
+
+# Trailing slash + missing leading slash both normalize to the same route.
+doAssert matchRoute(manifest, "/guide/intro/").entry.canonicalPath == "/guide/intro"
+doAssert matchRoute(manifest, "guide/intro").entry.canonicalPath == "/guide/intro"
+
+# An unknown path falls back to the typed not-found entry (HTTP 404).
+let miss = matchRoute(manifest, "/does/not/exist")
+doAssert miss.entry.pageKind == pkNotFound
+doAssert statusCode(miss.entry.status) == 404</code></pre></div></div></main><nav class="docs-nav-adjacent" aria-label="pagination"><a class="docs-nav-prev" href="/isonim-docs/getting-started">Getting Started</a><a class="docs-nav-next" href="/isonim-docs/theming">Theming &amp; Design Tokens</a></nav><footer id="docs-region-footer" class="docs-footer">isonim-docs -- built with isonim-docs. <a href="https://github.com/metacraft-labs">metacraft-labs</a>.</footer><div class="docs-search-overlay" id="docs-search-overlay" role="dialog" aria-modal="true" aria-label="Search documentation" data-search-index-url="/isonim-docs/search-index.ab34b8cbcf.json" data-search-mode="client" data-open="false" hidden><div class="docs-search-overlay-dialog"><input type="text" id="docs-search-overlay-input" class="docs-search-overlay-input" placeholder="Search docs…" aria-label="Search documentation" value=""><div id="docs-search-overlay-results"><ul class="docs-search-results" role="listbox"></ul></div><div class="docs-search-overlay-hint">Press Esc to close</div></div></div></div></body></html>
