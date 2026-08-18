@@ -98,6 +98,21 @@ proc copyAssetsVerbatim(outDir, assetsDir: string; docsTokensCss = "";
   doAssert fileExists(cssPath) and getFileSize(cssPath) > 0,
     "build_site: " & cssPath & " must exist and be non-empty " &
     "(stylesheetHref must never dangle) -- checked " & assetsDir & "/style.css"
+  ## Consumer OVERRIDES (dedup deliverable): a site that relies on the
+  ## framework's bundled default stylesheet (ships no `style.css` of its own)
+  ## may still carry a small, site-specific `assets/overrides.css`. It is
+  ## APPENDED after the base stylesheet (default or consumer-supplied) so its
+  ## rules win by cascade order, then folded into `style.css` and the standalone
+  ## file removed -- so the whole theme still rides the single hashed stylesheet
+  ## the pages reference (no extra asset, no `@import` the hash step would
+  ## break). This lets a consumer drop the ~1800-line stylesheet copy and keep
+  ## only its genuine deltas. Empty/absent => byte-identical to before.
+  let overridesPath = outDir / "assets" / "overrides.css"
+  if fileExists(overridesPath) and getFileSize(overridesPath) > 0:
+    let overridesCss = readFile(overridesPath)
+    writeFile(cssPath, readFile(cssPath) & "\n" & overridesCss)
+    removeFile(overridesPath)
+    info "ssg_style_overrides_appended", path = cssPath, bytes = overridesCss.len
   if docsTokensCss.len > 0:
     writeFile(cssPath, docsTokensCss & "\n" & readFile(cssPath))
     info "ssg_docs_tokens_prepended", path = cssPath, bytes = docsTokensCss.len

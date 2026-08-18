@@ -16,19 +16,14 @@
 when defined(js):
   {.error: "build.nim is a C-target (SSG) entry; not for the JS target".}
 
-import std/os
-import build_site
-import core/docs_tokens
+import docs_scaffold
 import ./docs_config
 import ./theme_tokens
 
 when isMainModule:
-  let tokensCss = emitTokensCss(isonimDocsTokenLayer(), designSystemTokens())
-  let n = buildSite(contentDir = "content", cfg = isonimDocsDocsConfig(),
-                    docsTokensCss = tokensCss)
-  ## Vendored theme binaries live outside `assets/` (which the SSG hashes +
-  ## renames) so they land in `public/assets/` at the exact unhashed paths
-  ## the stylesheet's `url(/assets/...)` refs point at.
-  if dirExists("static"):
-    copyDir("static", "public" / "assets")
+  # The framework `buildDocsSite` scaffold: SSG build + the shared design-system
+  # token CSS prepended onto the composed stylesheet (framework default; this
+  # site ships no `style.css` of its own) + `static/` copied verbatim.
+  let n = buildDocsSite(isonimDocsDocsConfig(),
+                        docsTokensCss = metacraftDocsTokensCss())
   echo "SSG: rendered ", n, " static pages into ./public/"

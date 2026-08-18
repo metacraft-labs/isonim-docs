@@ -105,3 +105,50 @@ suite "docs static-asset pipeline -- real SSG build (Tier 3-ish, C-target)":
       let indexHtml = readFile(outDir / "index.html")
       check ("/assets/" & hashedRel.extractFilename) in indexHtml
       check "/assets/style.css\"" notin indexHtml
+
+  test "a consumer overrides.css is APPENDED after the base stylesheet (its rules win by cascade order) and folded into the single hashed style.css":
+    withFixtureDir:
+      let assetsDir = fixtureDir / "assets"
+      let outDir = fixtureDir / "out"
+      # `.docs-frame` is a class the mini-site actually renders, so the purge
+      # keeps both rules. Base sets it red; the override sets it
+      # rebeccapurple and must land AFTER the base so it wins the cascade.
+      writeFixtureFile(fixtureDir, "assets" / "style.css",
+        ".docs-frame { color: red; }\n")
+      writeFixtureFile(fixtureDir, "assets" / "overrides.css",
+        ".docs-frame { color: rebeccapurple; }\n")
+
+      let pageCount = buildSite(outDir = outDir, contentDir = "tests/fixtures/mini-site",
+                                 assetsDir = assetsDir)
+      check pageCount > 0
+
+      let manifest = parseFile(outDir / "asset-manifest.json")
+      let hashedRel = manifest["assets/style.css"].getStr()
+      let cssContent = readFile(outDir / hashedRel)
+      # Both survive the purge; the override's declaration comes after the base's.
+      check "rebeccapurple" in cssContent
+      check cssContent.find("rebeccapurple") > cssContent.find("color: red") or
+            cssContent.find("rebeccapurple") > cssContent.find("color:red")
+      # overrides.css is folded into style.css -- it is NOT a served artifact of
+      # its own (no extra asset, no @import the hash step would break).
+      check not fileExists(outDir / "assets" / "overrides.css")
+
+  test "overrides.css rides the bundled DEFAULT stylesheet when the consumer ships no style.css of its own":
+    withFixtureDir:
+      let assetsDir = fixtureDir / "assets"
+      let outDir = fixtureDir / "out"
+      createDir(assetsDir) # no style.css -> the framework default is the base
+      writeFixtureFile(fixtureDir, "assets" / "overrides.css",
+        ".docs-frame { color: rebeccapurple; }\n")
+
+      let pageCount = buildSite(outDir = outDir, contentDir = "tests/fixtures/mini-site",
+                                 assetsDir = assetsDir)
+      check pageCount > 0
+
+      let manifest = parseFile(outDir / "asset-manifest.json")
+      let hashedRel = manifest["assets/style.css"].getStr()
+      let cssContent = readFile(outDir / hashedRel)
+      # The override rode the (provisioned default) base into the single hashed
+      # stylesheet, and its standalone file was folded in, not served.
+      check "rebeccapurple" in cssContent
+      check not fileExists(outDir / "assets" / "overrides.css")

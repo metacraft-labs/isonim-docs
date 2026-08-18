@@ -33,6 +33,13 @@ import chronicles
 import ./core/config
 import ./ssr
 
+const bundledDefaultStylesheet = staticRead("../assets/style.css")
+  ## The framework's own canonical stylesheet -- the SAME single source
+  ## `build_site.nim` provisions when a consumer ships no `style.css`. Served
+  ## here as the dev-time base so a consumer that relies on the default (plus a
+  ## small `overrides.css`) sees the identical composed look in `dev-docs` and
+  ## in the static build (dev == build).
+
 const
   wsGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
     ## RFC 6455 §1.3 magic GUID appended to the client key before hashing.
@@ -368,19 +375,32 @@ proc handleAsset*(server: DevServer; path: string):
   ## compiled+cached lazily (see `clientBundleJs`), ahead of the on-disk lookup.
   if rel == "app.js" and server.clientEntry.len > 0:
     return (200, mimeForAsset(rel), server.clientBundleJs())
+  ## `style.css` is COMPOSED (mirrors `build_site.copyAssetsVerbatim`):
+  ## tokens + base + overrides. The base is the consumer's own `style.css` if it
+  ## ships one, else the framework's bundled default; a consumer `overrides.css`
+  ## (from any assets dir) is appended after it. So a site that drops its
+  ## stylesheet copy in favour of the default + overrides gets dev == build.
+  if rel == "style.css" and server.assetsDirs.len > 0:
+    var base = ""
+    for dir in server.assetsDirs:
+      if fileExists(dir / "style.css"):
+        base = readFile(dir / "style.css"); break
+    if base.len == 0:
+      base = bundledDefaultStylesheet
+    for dir in server.assetsDirs:
+      if fileExists(dir / "overrides.css"):
+        base = base & "\n" & readFile(dir / "overrides.css"); break
+    # Prefer the live provider (re-read fresh, so design-system edits show
+    # immediately) over the static snapshot captured at startup.
+    let tokens =
+      if server.tokensCssProvider != nil: server.tokensCssProvider()
+      else: server.docsTokensCss
+    let body = (if tokens.len > 0: tokens & "\n" & base else: base)
+    return (200, mimeForAsset(rel), body)
   for dir in server.assetsDirs:
     let full = dir / rel
     if fileExists(full):
-      var body = readFile(full)
-      if rel == "style.css":
-        # Prefer the live provider (re-read fresh, so design-system edits show
-        # immediately) over the static snapshot captured at startup.
-        let tokens =
-          if server.tokensCssProvider != nil: server.tokensCssProvider()
-          else: server.docsTokensCss
-        if tokens.len > 0:
-          body = tokens & "\n" & body
-      return (200, mimeForAsset(rel), body)
+      return (200, mimeForAsset(rel), readFile(full))
   (404, "text/plain; charset=utf-8", "not found")
 
 proc handleRoute*(server: DevServer; path: string):

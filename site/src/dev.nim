@@ -14,23 +14,21 @@
 ## the port (default 8000).
 
 import std/[os, strutils, asyncdispatch]
-import dev_server
-import core/docs_tokens
+import docs_scaffold
 import ./docs_config
 import ./theme_tokens
 
-export dev_server
+export docs_scaffold
 
 proc newDocsDevServer*(contentDir = "content";
                        assetsDirs = @["assets", "static"]): DevServer =
-  ## This site's themed live-reload dev server (own content/config/tokens over
-  ## its assets/ + static/ dirs). Exposed so a test drives the exact `just dev-docs`
-  ## wiring without binding a socket.
-  newDevServer(contentDir = contentDir, cfg = isonimDocsDocsConfig(),
-               assetsDirs = assetsDirs,
-               docsTokensCss = docsTokensCssLive(),
-               tokensCssProvider = (proc(): string = docsTokensCssLive()),
-               watchPaths = @[docsDesignSystemPath])
+  ## This site's themed live-reload dev server via the framework `docsDevServer`
+  ## scaffold, wiring the shared design-system token provider for hot reload.
+  ## Exposed so a test drives the exact `just dev-docs` wiring without binding a
+  ## socket.
+  docsDevServer(isonimDocsDocsConfig(), contentDir = contentDir, assetsDirs = assetsDirs,
+                tokensCssProvider = (proc(): string = docsTokensCssLive()),
+                watchPaths = @[docsDesignSystemPath])
 
 when isMainModule:
   let port = if paramCount() >= 1: parseInt(paramStr(1)) else: 8000
