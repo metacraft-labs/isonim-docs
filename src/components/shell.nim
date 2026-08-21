@@ -27,6 +27,7 @@ import ../core/analytics
 import ./navigation_view
 import ./search_view
 import ./theme_toggle
+import ./image_viewer
 
 # The `ui(r): ...` client-mode macro expands to code that references
 # `createRenderEffect` as a bare (non-hygienic) identifier resolved at
@@ -357,15 +358,18 @@ proc renderDocumentHeadHtml*(head: DocumentHead; headTop = ""): string =
 
 proc pageInlineScriptBodies(cfg: DocsConfig): seq[string] =
   ## The exact bodies of the executable inline scripts the framework emits
-  ## for a page, in emission order: the theme no-flash bootstrap (always),
-  ## then the analytics beacon (only when configured). These are the strings
-  ## the CSP manager hashes into `script-src`, so a strict policy whitelists
+  ## for a page, in emission order: the theme no-flash bootstrap (always,
+  ## in `<head>`), then the analytics beacon (only when configured, also in
+  ## `<head>`), then the image viewer (always, as the LAST child of
+  ## `<body>` -- see `components/image_viewer`). These are the strings the
+  ## CSP manager hashes into `script-src`, so a strict policy whitelists
   ## precisely the scripts the page ships and nothing else. (The JSON-LD /
   ## search-index blocks are `type=application/(ld+)json` data islands, not
   ## executable, so CSP `script-src` never applies to them.)
   result = @[themeBootstrapScriptBody()]
   let analyticsBody = analyticsScriptBody(cfg.analytics)
   if analyticsBody.len > 0: result.add analyticsBody
+  result.add imageViewerScriptBody()
 
 proc renderHeadSecurityTop*(cfg: DocsConfig): string =
   ## The M12-deliverable-3 secure head prelude: the CSP `<meta>` (first, so

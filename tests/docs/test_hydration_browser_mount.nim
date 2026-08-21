@@ -311,7 +311,11 @@ when not defined(js):
 
 import std/[unittest, strutils]
 import isonim/web/dom_api
+import isonim/web/web_renderer
 import ../../src/main_web
+import ../../src/hydrating_renderer
+import ../../src/core/markdown_vm
+import ../../src/components/markdown_view
 
 proc tagOf(n: Node): string =
   var t: cstring
@@ -395,6 +399,47 @@ suite "docs JS hydration (Tier 3, JS-target, M4 corrective deliverable 1)":
     let themeAfter = attrOf(toggle, "data-theme")
     check themeAfter != themeBefore
     check attrOf(toggle, "aria-pressed") == (if themeAfter == "dark": "true" else: "false")
+
+  test "hydrating a content image reuses the figure/img/affordance nodes (no duplicate affordance)":
+    ## The image viewer's affordance markup is emitted by BOTH renderer
+    ## backends (SSR string + client tree), so the one thing that could
+    ## silently break is hydration parity: a structural mismatch would
+    ## leave the SSR `<img>` orphaned and append a second, JS-built copy
+    ## alongside it. This asserts real node identity through the whole
+    ## figure subtree, and that the figure still has exactly its two
+    ## children afterwards.
+    let rootEl = document.getElementById("isonim-docs-hydration-image-root")
+    let blocks = parseMarkdownBlocks("![A wide diagram](/img/wide.png)")
+
+    # "The browser already parsed the SSR HTML": the same component code,
+    # built through a plain WebRenderer (see this suite's docstring).
+    let preRendered = renderMarkdownBody[WebRenderer, Node](WebRenderer(), blocks)
+    discard appendChild(Node(rootEl), preRendered)
+
+    let originalParagraph = preRendered.firstChild
+    let originalFigure = originalParagraph.firstChild
+    let originalImg = originalFigure.firstChild
+    let originalExpand = originalImg.nextSibling
+    check tagOf(originalFigure) == "span"
+    check attrOf(originalFigure, "class") == imageFigureClass
+    check tagOf(originalImg) == "img"
+    check attrOf(originalImg, "class") == imageClass
+    check tagOf(originalExpand) == "a"
+    check attrOf(originalExpand, "class") == imageExpandClass
+
+    let r = newHydratingRenderer(rootEl)
+    let mounted = renderMarkdownBody[HydratingRenderer, Node](r, blocks)
+    discard appendChild(Node(rootEl), mounted)
+
+    check childCount(Node(rootEl)) == 1
+    check sameNode(mounted, preRendered)
+    let paragraph = mounted.firstChild
+    check sameNode(paragraph, originalParagraph)
+    let figure = paragraph.firstChild
+    check sameNode(figure, originalFigure)
+    check sameNode(figure.firstChild, originalImg)
+    check sameNode(figure.firstChild.nextSibling, originalExpand)
+    check childCount(figure) == 2
 
   test "hydrateApp reuses the pre-existing shell tree the same way createApp would build fresh":
     let rootEl = document.getElementById("isonim-docs-hydration-app-root")

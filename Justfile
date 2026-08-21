@@ -21,6 +21,7 @@ docs-test-c:
     nim c -r tests/docs/test_syntax_highlight.nim
     nim c -r tests/docs/test_code_copy_mock.nim
     nim c -r tests/docs/test_markdown_renderroute.nim
+    nim c -r tests/docs/test_image_viewer.nim
     nim c -r tests/docs/test_openapi_ingest.nim
     nim c -r tests/docs/test_api_reference_renderroute.nim
     nim c -r tests/docs/test_nimdoc_parse.nim
@@ -98,6 +99,7 @@ docs-test-js: tailwind-bootstrap
     nim js -r tests/docs/test_syntax_highlight.nim
     nim js -r tests/docs/test_code_copy_mock.nim
     nim js -r tests/docs/test_markdown_browser_mount.nim
+    nim js -r tests/docs/test_image_viewer.nim
     nim js -r tests/docs/test_openapi_ingest.nim
     nim js -r tests/docs/test_nimdoc_parse.nim
     nim js -r tests/docs/test_code_copy_browser_mount.nim

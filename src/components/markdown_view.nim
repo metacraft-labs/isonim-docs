@@ -20,8 +20,14 @@ import ../core/markdown_vm
 import ../core/syntax_highlight
 import ./component_registry
 import ./error_boundary
+import ./image_viewer
 
 export component_registry
+
+## The content-image classes/labels (`docs-md-figure`, the affordance's
+## `aria-label`, ...) are part of this module's own rendered contract, so a
+## caller asserting on markdown markup gets them from the same import.
+export image_viewer
 
 const
   markdownBodyClass* = "docs-md-body"
@@ -178,10 +184,12 @@ proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
       r.appendChild(linkEl, r.createTextNode(s.text))
       r.appendChild(parent, linkEl)
     of ikImage:
-      let imgEl = r.createElement("img")
-      r.setAttribute(imgEl, "src", s.href)
-      r.setAttribute(imgEl, "alt", s.text)
-      r.appendChild(parent, imgEl)
+      ## A CONTENT image renders through `components/image_viewer`: the
+      ## `<img>` plus an affordance to view it full-viewport when it is
+      ## actually being displayed smaller than it is. Chrome images (the
+      ## header logo, a `:::cards` icon) deliberately do NOT go through
+      ## here -- they are sized by the theme, never downscaled content.
+      appendImageFigure[R, E](r, parent, s.href, s.text)
     of ikSymRef:
       ## M8 deliverable 2: a resolved `[[sym:...]]` renders as a link to the
       ## symbol anchor; an unresolved one renders as inline code (and is
@@ -644,7 +652,9 @@ proc spansHtml*(spans: seq[InlineSpan]): string =
     of ikLink:
       result.add "<a href=\"" & escapeAttr(s.href) & "\">" & escapeHtml(s.text) & "</a>"
     of ikImage:
-      result.add "<img src=\"" & escapeAttr(s.href) & "\" alt=\"" & escapeAttr(s.text) & "\" />"
+      ## SSR counterpart to `appendInlineSpans`' `ikImage` branch -- kept in
+      ## lock-step by both calling `components/image_viewer` (see there).
+      result.add renderImageFigureHtml(s.href, s.text)
     of ikSymRef:
       if s.href.len > 0:
         result.add "<a class=\"" & symRefClass & "\" href=\"" & escapeAttr(s.href) &

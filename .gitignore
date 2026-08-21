@@ -28,6 +28,7 @@ tests/docs/test_markdown_anchor_ids
 tests/docs/test_markdown_mock
 tests/docs/test_markdown_tabs
 tests/docs/test_markdown_renderroute
+tests/docs/test_image_viewer
 tests/docs/test_openapi_ingest
 tests/docs/test_api_reference_renderroute
 tests/docs/test_nimdoc_parse

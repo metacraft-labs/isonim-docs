@@ -163,3 +163,40 @@ for blk in doc.blocks:
     doAssert blk.headingId.len > 0
 doAssert headings == 2
 ```
+
+## Images
+
+A Markdown image (`![alt](/path/to/shot.png)`) renders as more than a bare
+`<img>`. Screenshots are usually far wider than the content column, so the
+engine wraps every content image in a `docs-md-figure` span carrying the
+image plus an **affordance to view it at full viewport size**:
+
+```nim runnable
+import std/strutils
+import core/markdown_vm
+import components/markdown_view
+let html = renderMarkdownBodyHtml(parseMarkdownBlocks("![A wide diagram](/img/wide.png)"))
+doAssert html.contains("class=\"" & imageFigureClass & "\"")
+doAssert html.contains("class=\"" & imageExpandClass & "\"")
+doAssert html.contains("aria-label=\"" & imageExpandLabel("A wide diagram") & "\"")
+## Whether the image is DOWNSCALED is a rendered-size fact, so the server
+## never asserts it -- the client measures and owns `data-zoomable`.
+doAssert not html.contains(imageZoomableAttr)
+```
+
+The affordance is only shown when the image really is being displayed
+smaller than its natural size, measured in the browser and re-measured on
+every viewport resize: an image that already fits gets no control at all.
+Activating it (click, `Enter`, or a click on the image itself) opens a modal
+overlay showing the image as large as the viewport allows, with the `alt`
+text as its caption and as the dialog's accessible name. The overlay closes
+by its visible close control, by `Escape`, or by a click on the backdrop;
+focus moves into it, is trapped while it is open, and returns to the control
+that opened it, and the page behind it does not scroll.
+
+The behaviour ships with the framework: it comes from a small inline script
+`ssr.renderRoute` emits at the end of every page (hashed into the CSP
+`script-src` like the theme bootstrap), so a consumer inherits it whether or
+not it ships a client bundle of its own. With JavaScript unavailable the
+affordance stays what it is in the markup -- a plain link to the image file --
+so the full-size image is always reachable.

@@ -18,6 +18,7 @@ import ./core/config
 import ./core/plugin
 import ./core/search_vm
 import ./components/search_view
+import ./components/image_viewer
 import ./core/asset_pipeline
 import ./core/base_path
 
@@ -283,6 +284,14 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   ## HTML, so without this the purge would strip their styling and live
   ## search results would render unstyled.
   for cls in searchRuntimeClasses:
+    usedClasses.incl cls
+
+  ## Safelist the image viewer's overlay classes (see
+  ## `image_viewer.imageViewerRuntimeClasses`) for the same reason: the
+  ## full-viewport overlay is BUILT BY THE CLIENT when a reader opens an
+  ## image, so it appears in no static page and the purge would otherwise
+  ## strip its rules and ship an unstyled full-screen overlay.
+  for cls in imageViewerRuntimeClasses:
     usedClasses.incl cls
 
   var hrefRewrites = hashAndPurgeAssets(outDir, usedClasses)

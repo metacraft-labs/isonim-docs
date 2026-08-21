@@ -29,6 +29,7 @@ import ./core/version_vm
 import ./core/i18n_vm
 import ./core/plugin
 import ./components/shell
+import ./components/image_viewer
 import ./components/version_selector
 import ./components/language_switcher
 import ./components/markdown_page
@@ -308,7 +309,18 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
     ## M11 deliverable 1: the final HTML string passes through every
     ## registered `onRender` hook (in registration order) before it leaves
     ## the renderer -- an empty host returns it unchanged.
-    let html = host.applyOnRender(renderToString(renderFn))
+    ## The image viewer's client script is spliced in as the LAST child of
+    ## `<body>`, on EVERY page kind and every route (see
+    ## `components/image_viewer`): it is emitted by the framework's own SSR
+    ## path rather than by a consumer's client bundle, so every consumer --
+    ## including one that ships no client bundle at all, or one whose mount
+    ## entry only knows about its own chrome -- inherits full-viewport image
+    ## viewing without changing a line of its own code or its markdown.
+    ## Unconditional (not "only pages that currently show an image") so a
+    ## soft (SPA) navigation into an image-carrying route still has it.
+    ## Applied BEFORE the plugin `onRender` hooks, so a hook sees the final
+    ## document exactly as it will be served.
+    let html = host.applyOnRender(withImageViewerScript(renderToString(renderFn)))
     info "docs_route_rendered", path = path, status = status
     result = (status, html)
   except CatchableError as e:
