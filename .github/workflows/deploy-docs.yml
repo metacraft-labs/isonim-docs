@@ -1,13 +1,14 @@
 name: Deploy docs
 
 # Publish the isonim-docs self-documentation site (site/) to GitHub Pages on
-# every push to main. Independent of the CI test workflow: docs are content and
-# must publish regardless of unrelated test status. GitHub Pages must be enabled
-# for this repo with the source set to the `gh-pages` branch (Settings -> Pages).
+# every push to dev, this repo's mainline. Independent of the CI test workflow:
+# docs are content and must publish regardless of unrelated test status. GitHub
+# Pages must be enabled for this repo with the source set to the `gh-pages`
+# branch (Settings -> Pages).
 
 on:
   push:
-    branches: [main]
+    branches: [dev]
   workflow_dispatch: {}
 
 # Only one deploy at a time; a newer push supersedes an in-flight one.
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   build-and-deploy-docs:
     runs-on: eph-linux-x64
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/dev'
     permissions:
       contents: write # push the built site to the gh-pages branch
     steps:
