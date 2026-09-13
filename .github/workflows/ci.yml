@@ -15,7 +15,7 @@ jobs:
         # Mirrors ../isonim/.github/workflows/ci.yml: the toolchain (Nim,
         # nimble, just) comes entirely from the isonim flake's dev shell,
         # so we matrix only over runner class, not Nim version.
-        runner: [eph-linux-x64, eph-linux-arm64, eph-macos-arm64]
+        runner: [[self-hosted, linux, x64], [self-hosted, linux, arm64], [self-hosted, macos, arm64]]
     runs-on: ${{ matrix.runner }}
     steps:
       # isonim-docs has no flake of its own -- `.envrc` does
