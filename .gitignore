@@ -91,3 +91,6 @@ node_modules/
 # agent-orchestration artifacts (not part of the framework)
 .ah/
 *.milestones.org
+
+# Repro development environment cache
+.repro/
