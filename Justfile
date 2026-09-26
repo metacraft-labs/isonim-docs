@@ -6,6 +6,7 @@
 
 # Run the M0 + M1 + M2 suites on the C target.
 docs-test-c:
+    nim c -r tests/docs/test_nimcache_is_worktree_local.nim
     nim c -r tests/docs/test_bootstrap_vm.nim
     nim c -r tests/docs/test_bootstrap_mock.nim
     nim c -r tests/docs/test_bootstrap_renderroute.nim
