@@ -1,5 +1,8 @@
 # Nim / nimble
 nimcache/
+# Per-checkout nimcache (config.nims): every Nim compile in this checkout
+# keeps its intermediate files here, never in the shared ~/.cache/nim.
+.nimcache/
 nimblecache/
 *.exe
 build/
@@ -67,6 +70,7 @@ tests/docs/test_versioning_routes
 tests/docs/test_versioning_renderroute
 tests/docs/test_i18n
 tests/docs/test_i18n_renderroute
+tests/docs/test_nimcache_is_worktree_local
 
 # `nim js` writes its output next to the compiled .nim file unless -o:
 # is given (e.g. `nim js -r tests/docs/foo.nim` -> tests/docs/foo.js).
