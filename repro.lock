@@ -1,0 +1,9 @@
+schema = "reprobuild.solved-graph-lock.v2"
+
+[lock]
+platform = "amd64-linux"
+optimal = false
+inputs_digest = "fnv1a64:cbf29ce484222325"
+variants = []
+packages = []
+deps = [{ name = "isonim-docs", path = ".", coord_kind = "vcs", url = "https://github.com/metacraft-labs/isonim-docs", ref = "agents-to-dev-2026-10-03", revision = "1fdb5d3c8d71dace2d60a7352248a0b687d8269c", integrity = "git-sha1:1fdb5d3c8d71dace2d60a7352248a0b687d8269c", version = "", visibility = "public", participation = "", depends = "", tags = "" }]
