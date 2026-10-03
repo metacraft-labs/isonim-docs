@@ -1,6 +1,6 @@
 ---
 title: Alpha Guide
-nav_order: 1
+order: 1
 ---
 # Alpha Guide
 
