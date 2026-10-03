@@ -24,11 +24,9 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1785520314,
-        "narHash": "sha256-niypxCArxvIkC9A1fyTd05UQ1h0xWItDf/3AGi8zPDg=",
         "owner": "metacraft-labs",
         "repo": "isonim",
-        "rev": "4b1b66be1bc7d198df45f068446ebacb43e979f1",
+        "rev": "bb0ff1a2dc94f844ce7eb2ae61c42e54a54fd071",
         "type": "github"
       },
       "original": {
