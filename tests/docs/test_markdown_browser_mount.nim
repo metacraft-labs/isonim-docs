@@ -298,7 +298,8 @@ when not defined(js):
 })();
 """.}
 
-import std/[unittest, strutils]
+import std/[unittest, strutils, os, tables]
+import ../../src/core/[content, content_embed, navigation_vm]
 import isonim/web/dom_api
 import isonim/web/client
 import ../../src/core/markdown_vm
@@ -319,6 +320,16 @@ let fixtureManifest = newRouteManifest(@[
   newRouteEntry("/guide/alpha", pkMarkdown, meta = RouteMeta(title: "Alpha Guide", contentPath: "guide/alpha.md")),
   newRouteEntry("/guide/beta", pkMarkdown, meta = RouteMeta(title: "Beta Guide", contentPath: "guide/beta.md")),
 ])
+
+# Compile-time owned fixtures supply an independent metadata/order census;
+# missing inputs fail rather than borrowing the mounted DOM's state.
+const markdownFixtureContents = embedContentDir(
+  currentSourcePath().parentDir / "../fixtures/mini-site")
+
+proc markdownFixtureContent(path: string): ContentEntry =
+  if not markdownFixtureContents.hasKey(path):
+    raise newException(ValueError, "Missing markdown route fixture: " & path)
+  parseContentEntry(markdownFixtureContents[path], path)
 
 suite "docs JS route-mount parity -- markdown pages (Tier 3, JS-target)":
   test "createRouteApp('/guide/alpha') mounts a real markdown page through renderMarkdownPage":
@@ -356,9 +367,41 @@ suite "docs JS route-mount parity -- markdown pages (Tier 3, JS-target)":
     check tagOf(mdBodyNode) == "div"
     check attrOf(mdBodyNode, "class") == "docs-md-body"
 
-    let footerNode = mainNode.nextSibling
+    check markdownFixtureContents.hasKey("guide/alpha.md")
+    check markdownFixtureContents.hasKey("guide/beta.md")
+    let pages = buildNavPages(fixtureManifest, markdownFixtureContent)
+    check pages.len == 2
+    for (page, route, title, order) in [
+        (pages[0], "/guide/alpha", "Alpha Guide", 1),
+        (pages[1], "/guide/beta", "Beta Guide", 2)]:
+      check page.routePath == route
+      check page.title == title
+      check page.section == "guide"
+      check page.order == order
+    let adjacent = buildAdjacentPages(pages, "/guide/alpha")
+    check adjacent.previous.routePath == ""
+    check adjacent.next.routePath == "/guide/beta"
+    check adjacent.next.title == "Beta Guide"
+    let adjacentNode = mainNode.nextSibling
+    check tagOf(adjacentNode) == "nav"
+    check attrOf(adjacentNode, "class") == "docs-nav-adjacent"
+    check attrOf(adjacentNode, "aria-label") == "pagination"
+    let nextLink = adjacentNode.firstChild
+    check tagOf(nextLink) == "a"
+    check attrOf(nextLink, "class") == "docs-nav-next"
+    check attrOf(nextLink, "href") == "/guide/beta"
+    check $nextLink.textContent == "Beta Guide"
+    check nextLink.nextSibling.isNodeNil
+
+    let footerNode = adjacentNode.nextSibling
     check tagOf(footerNode) == "footer"
     check attrOf(footerNode, "id") == "docs-region-footer"
+    let searchOverlay = footerNode.nextSibling
+    check tagOf(searchOverlay) == "div"
+    check attrOf(searchOverlay, "id") == "docs-search-overlay"
+    check attrOf(searchOverlay, "class") == "docs-search-overlay"
+    check attrOf(searchOverlay, "role") == "dialog"
+    check searchOverlay.nextSibling.isNodeNil
 
     # Same heading IDs and structure as SSR: walk the mounted tree for the
     # first heading and confirm its id matches the anchor ID the exact

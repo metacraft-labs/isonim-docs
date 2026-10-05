@@ -7,7 +7,7 @@ set -e
 # https://metacraft-labs.github.io/isonim-docs/.
 #
 # site/ is an isonim-docs SSG consumer: `just build` runs `nim c -r src/build.nim`
-# under the isonim dev shell and emits the static site into site/public/. Its
+# under the owning docs dev shell and emits the static site into site/public/. Its
 # DocsConfig sets basePath="/isonim-docs" so every internal URL is prefixed for
 # the project-Pages subpath (see src/core/base_path.nim). The Metacraft brand
 # DTCG tokens are read from the codetracer-design-system sibling at build time.
@@ -25,7 +25,7 @@ fi
 
 # --- Build the isonim-docs SSG self-docs -----------------------------------
 pushd site/
-nix develop ../../isonim -c just build # build output is in ./public
+nix develop .. -c just build # build output is in ./public
 popd
 
 SITE_DIR="site/public"

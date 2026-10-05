@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "flake-compat": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767039857,
+        "narHash": "sha256-vNpUSpF5Nuw8xvDLj2KCwwksIbjua2LZCqhV1LNRDns=",
+        "owner": "NixOS",
+        "repo": "flake-compat",
+        "rev": "5edf11c44bc78a0d334f6334cdaf7d60d732daab",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "flake-compat",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -18,17 +34,40 @@
         "type": "github"
       }
     },
+    "git-hooks": {
+      "inputs": {
+        "flake-compat": "flake-compat",
+        "nixpkgs": [
+          "isonim",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790091288,
+        "narHash": "sha256-2dUuLTiQrf2gUFVLlayDq/hgluitplAMv6Y9bYwQQ+c=",
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "rev": "0d3997c4d3253505f77c9bcea63904bb575da3c5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "type": "github"
+      }
+    },
     "isonim": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1785520314,
-        "narHash": "sha256-niypxCArxvIkC9A1fyTd05UQ1h0xWItDf/3AGi8zPDg=",
+        "lastModified": 1790939584,
+        "narHash": "sha256-FTqs33PssnNFvmOGtPYVYHujaNdjTdj/P0ifHP14TYU=",
         "owner": "metacraft-labs",
         "repo": "isonim",
-        "rev": "4b1b66be1bc7d198df45f068446ebacb43e979f1",
+        "rev": "bb0ff1a2dc94f844ce7eb2ae61c42e54a54fd071",
         "type": "github"
       },
       "original": {

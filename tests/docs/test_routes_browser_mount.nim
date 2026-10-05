@@ -298,7 +298,8 @@ when not defined(js):
 })();
 """.}
 
-import std/[unittest, strutils]
+import std/[unittest, strutils, os, tables]
+import ../../src/core/[content, content_embed, navigation_vm]
 import isonim/web/dom_api
 import isonim/web/client
 import ../../src/core/routes
@@ -313,6 +314,17 @@ proc attrOf(n: Node; name: cstring): string =
   var v: cstring
   {.emit: [v, " = ", n, ".getAttribute(", name, ");"].}
   $v
+
+# Read the complete owned content fixtures at compile time, so the Node
+# oracle uses real frontmatter/section ordering without runtime filesystem
+# access or borrowing the mounted DOM's implementation state.
+const routeFixtureContents = embedContentDir(
+  currentSourcePath().parentDir / "../fixtures/mini-site")
+
+proc fixtureContent(path: string): ContentEntry =
+  if not routeFixtureContents.hasKey(path):
+    raise newException(ValueError, "Missing route content fixture: " & path)
+  parseContentEntry(routeFixtureContents[path], path)
 
 suite "docs JS route-mount parity (Tier 3, JS-target)":
   test "createRouteApp('/') mounts the index route through the real rendering shell":
@@ -352,9 +364,47 @@ suite "docs JS route-mount parity (Tier 3, JS-target)":
     check attrOf(bodyNode, "class") == "docs-body"
     check $bodyNode.textContent == expected.body
 
-    let footerNode = mainNode.nextSibling
+    # Validate the canonical manifest/content-derived adjacent links in
+    # their exact order before the unchanged footer oracle.
+    let adjacentNode = mainNode.nextSibling
+    check tagOf(adjacentNode) == "nav"
+    check attrOf(adjacentNode, "class") == "docs-nav-adjacent"
+    check attrOf(adjacentNode, "aria-label") == "pagination"
+    check routeFixtureContents.len == 4
+    for requiredPath in ["index.md", "getting-started.md", "guide/alpha.md", "guide/beta.md"]:
+      check routeFixtureContents.hasKey(requiredPath)
+    let fixturePages = buildNavPages(docsRouteManifest(), fixtureContent)
+    # The mini-site has two manifest-bound root-section pages, both with
+    # default order 0: slug ordering puts getting-started before index.
+    # Its guide/alpha and guide/beta files have no manifest entries.
+    check fixturePages.len == 2
+    check fixturePages[0].routePath == "/guide/getting-started"
+    check fixturePages[1].routePath == "/"
+    let expectedAdjacent = buildAdjacentPages(fixturePages, "/")
+    check expectedAdjacent.previous.routePath == "/guide/getting-started"
+    check expectedAdjacent.previous.title == "Getting Started"
+    check expectedAdjacent.next.routePath == ""
+    var link = adjacentNode.firstChild
+    for (page, expectedClass) in [(expectedAdjacent.previous, "docs-nav-prev"),
+                                  (expectedAdjacent.next, "docs-nav-next")]:
+      if page.routePath.len > 0:
+        check not link.isNodeNil
+        check tagOf(link) == "a"
+        check attrOf(link, "class") == expectedClass
+        check attrOf(link, "href") == page.routePath
+        check $link.textContent == page.title
+        link = link.nextSibling
+    check link.isNodeNil
+
+    let footerNode = adjacentNode.nextSibling
     check tagOf(footerNode) == "footer"
     check attrOf(footerNode, "id") == "docs-region-footer"
+    let searchOverlay = footerNode.nextSibling
+    check tagOf(searchOverlay) == "div"
+    check attrOf(searchOverlay, "id") == "docs-search-overlay"
+    check attrOf(searchOverlay, "class") == "docs-search-overlay"
+    check attrOf(searchOverlay, "role") == "dialog"
+    check searchOverlay.nextSibling.isNodeNil
 
   test "createRouteApp('/guide/getting-started') mounts the nested route from its own bound content file":
     let expected = mountedRoutePage("getting-started.md")
