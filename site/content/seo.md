@@ -3,6 +3,7 @@ title: SEO & Error Handling
 description: Build-time SEO artifacts (canonical/OpenGraph/Twitter/JSON-LD, sitemap.xml, robots.txt) and the resilient 404/500 fallback pages that always retain site chrome.
 order: 6
 ---
+
 # SEO & Error Handling
 
 Two cross-cutting concerns round out the render pipeline: the SEO metadata
@@ -55,7 +56,7 @@ doAssert miss.entry.pageKind == pkNotFound
 doAssert statusCode(miss.entry.status) == 404
 ```
 
-A render that *fails* is handled the same way: `renderRoute` returns a real
+A render that _fails_ is handled the same way: `renderRoute` returns a real
 500 fallback page that retains the chrome instead of re-raising, and embedded
 components are wrapped in a component-level error boundary (see
 [Live Components](./components.md)) so a single throwing embed shows a

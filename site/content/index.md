@@ -3,6 +3,7 @@ title: Introduction
 description: isonim-docs is a Nim documentation-site framework built on IsoNim, with one component codebase driving SSG, SSR, and SPA rendering.
 order: 0
 ---
+
 # Introduction
 
 **isonim-docs** is a documentation-site framework written in Nim and built
@@ -19,7 +20,7 @@ dogfooding it. Every page you are reading is a Markdown file under
 
 ## One codebase, three render targets
 
-The defining property of isonim-docs is that the *same* component code
+The defining property of isonim-docs is that the _same_ component code
 resolves and renders a route on every target:
 
 - **SSG** (static site generation) -- `build_site.buildSite` walks the

@@ -3,13 +3,14 @@ title: Theming & Design Tokens
 description: The --docs-* CSS custom-property contract and the token layer that binds each variable to a light + dark value.
 order: 3
 ---
+
 # Theming & Design Tokens
 
 The isonim-docs theme has two halves. The **rules** half is
 `assets/style.css`: structural CSS that reads a fixed set of ~40 `--docs-*`
 CSS custom properties (`--docs-bg`, `--docs-fg`, `--docs-accent`,
-`--docs-admonition-tip-border`, ...). The **data** half is a *docs token
-layer*: the values that bind each of those variables, for both light and
+`--docs-admonition-tip-border`, ...). The **data** half is a _docs token
+layer_: the values that bind each of those variables, for both light and
 dark mode.
 
 The framework ships no token layer, so its default output is unchanged. A
@@ -119,7 +120,7 @@ when isMainModule:
 
 The site title, an optional logo, and a footer are set on `DocsConfig`
 rather than in CSS, so re-branding needs no stylesheet edit. This site sets
-`siteTitle` and `footerHtml` and ships *no* logo:
+`siteTitle` and `footerHtml` and ships _no_ logo:
 
 ```nim runnable
 import core/config

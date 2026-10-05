@@ -25,6 +25,7 @@ hydration** modes for free from one component codebase.
 ## Feature map (target)
 
 **Authoring & content**
+
 - Multi-page sites with nested sections, ordered navigation (a `SUMMARY`-style
   book structure like mdBook + MkDocs `nav`).
 - Markdown content with frontmatter, admonitions/callouts, tabs, code blocks
@@ -35,21 +36,25 @@ hydration** modes for free from one component codebase.
 - Versioned docs and localization-ready structure.
 
 **Reference documentation**
+
 - **REST API reference** from OpenAPI: endpoints, params, schemas, try-it,
   three-column Stripe-style layout (prose + endpoint + sample code).
 - **Programming-library reference**: modules, types, procs/functions, symbol
   index, cross-links — a rustdoc/Sphinx-class API browser (first target: Nim).
 
 **Search (first-class)**
+
 - Fast client-side full-text search (SSG-friendly prebuilt index) with instant
   results, keyboard navigation, highlighting, and section-scoped ranking.
 - Optional server-side search for large corpora (SSR mode).
 
 **Rendering & delivery**
+
 - SSG (static HTML + hydration bundle), SSR (dynamic / nginx-native), SPA.
 - Theming via Tailwind + IsoNim theme tokens; light/dark; responsive; a11y.
 
 **Dogfood deliverable**
+
 - A production-quality example site: **the end-user documentation of IsoNim and
   the IsoNim editor**, exercising every feature above.
 

@@ -6,6 +6,7 @@ built with isonim-docs — i.e. the framework documents itself — and it also
 **hosts the shared design-system editor** under [`design/`](design/README.md).
 
 > Sibling sites, so you know which one you want:
+>
 > - **this** (`isonim-docs/site/`) documents the **isonim-docs SSG**;
 > - [`isonim/docs/users/`](../../isonim/docs/users/README.md) documents the **IsoNim UI framework**;
 > - [`codetracer/docs/book-isonim/`](../../codetracer/docs/book-isonim/README.md) is the **CodeTracer product** book.
@@ -77,12 +78,12 @@ rebuild** — one editor themes all three sites. See
 
 ## Where things live
 
-| Path | What |
-|------|------|
-| `content/*.md` | The framework's self-documentation (dev-server, deployment, CLI, components, …) |
-| `src/{build,dev,ssr}.nim` | Build/serve entry points |
-| `design/` | The design-system editor harness (see its README) |
-| `tests/` | Site-build, feature-coverage, link/example, dev tests |
+| Path                      | What                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `content/*.md`            | The framework's self-documentation (dev-server, deployment, CLI, components, …) |
+| `src/{build,dev,ssr}.nim` | Build/serve entry points                                                        |
+| `design/`                 | The design-system editor harness (see its README)                               |
+| `tests/`                  | Site-build, feature-coverage, link/example, dev tests                           |
 
 The framework source itself lives one level up in [`../src`](../src); this
-`site/` directory is only the framework's *documentation* consumer.
+`site/` directory is only the framework's _documentation_ consumer.

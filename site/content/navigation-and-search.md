@@ -3,6 +3,7 @@ title: Navigation & Search
 description: The recursive sidebar, breadcrumbs, and prev/next navigation, the in-browser client search index, and the optional server-side search path with pluggable backends.
 order: 5
 ---
+
 # Navigation & Search
 
 isonim-docs derives a site's whole navigation surface -- a recursive

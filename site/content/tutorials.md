@@ -3,6 +3,7 @@ title: Tutorials, Versioning & i18n
 description: The interactive tutorial layout with step progress and completion tracking, documentation versioning with /vX.Y/ route prefixes, and i18n with locale prefixes, a translation table, and hreflang alternates.
 order: 10
 ---
+
 # Tutorials, Versioning & i18n
 
 Three orthogonal, opt-in features let a docs site grow from a single set of
@@ -78,7 +79,7 @@ doAssert buildVersionBanner(catalog, older).show
 An i18n site serves the same content graph under several UI locales. The
 **default** locale is the canonical, unprefixed site; every other locale
 lives behind a `/xx/` prefix (`/de/guide/x`). `core/i18n_vm` parses the
-locale prefix (recognized only when the first segment is a *declared* locale,
+locale prefix (recognized only when the first segment is a _declared_ locale,
 so a page named `/enterprise` is never mistaken for a locale), holds the
 UI-string translation table with default-locale fallback, builds the language
 switcher, and emits the `hreflang` alternates the head needs:

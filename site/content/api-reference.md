@@ -3,6 +3,7 @@ title: OpenAPI REST Reference
 description: Build-time OpenAPI v3 ingestion (YAML + JSON) into a typed model and a Stripe-style three-column reference page with method color-coding, synthesized code samples, and deep-linkable per-operation anchors.
 order: 7
 ---
+
 # OpenAPI REST Reference
 
 isonim-docs renders a REST API's OpenAPI v3 spec as a Stripe-style
