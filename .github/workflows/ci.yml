@@ -15,7 +15,12 @@ jobs:
         # Mirrors ../isonim/.github/workflows/ci.yml: the toolchain (Nim,
         # nimble, just) comes from the owning docs flake's pinned IsoNim shell,
         # so we matrix only over runner class, not Nim version.
-        runner: [[self-hosted, linux, x64], [self-hosted, linux, arm64], [self-hosted, macos, arm64]]
+        runner:
+          [
+            [self-hosted, linux, x64],
+            [self-hosted, linux, arm64],
+            [self-hosted, macos, arm64],
+          ]
     runs-on: ${{ matrix.runner }}
     steps:
       # The primary checkout stays at GITHUB_WORKSPACE. The shared helper

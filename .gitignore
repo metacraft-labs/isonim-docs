@@ -98,3 +98,6 @@ node_modules/
 
 # Repro development environment cache
 .repro/
+
+# Immutable owning hook derivation owns this generated configuration.
+/.pre-commit-config.yaml

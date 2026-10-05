@@ -20,7 +20,7 @@ set -e
 
 DRY_RUN=0
 if [ "${DOCS_DEPLOY_DRY_RUN:-0}" = "1" ] || [ "${1:-}" = "--dry-run" ]; then
-	DRY_RUN=1
+  DRY_RUN=1
 fi
 
 # --- Build the isonim-docs SSG self-docs -----------------------------------
@@ -45,11 +45,11 @@ git add -A
 git commit -q -m 'deploy isonim-docs self-docs' --no-gpg-sign
 
 if [ "$DRY_RUN" = "1" ]; then
-	echo "docs.sh: DRY RUN -- skipping push; staged $(git ls-files | wc -l) files"
+  echo "docs.sh: DRY RUN -- skipping push; staged $(git ls-files | wc -l) files"
 else
-	: "${DEPLOY_TOKEN:?DEPLOY_TOKEN required for the gh-pages push}"
-	: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY required (owner/repo)}"
-	git push --force \
-		"https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
-		HEAD:gh-pages
+  : "${DEPLOY_TOKEN:?DEPLOY_TOKEN required for the gh-pages push}"
+  : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY required (owner/repo)}"
+  git push --force \
+    "https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
+    HEAD:gh-pages
 fi

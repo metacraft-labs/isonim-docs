@@ -8,7 +8,7 @@ for each deliverable, write the failing test, then the code that makes it pass.
 
 - Toolchain comes from the **IsoNim dev shell** (Nim ≥ 2.0, nimble, nodejs, yarn,
   esbuild, tailwind). Enter it with `direnv allow` (uses `.envrc` → `use flake
-  ../isonim`) or run commands via `nix develop ../isonim -c <cmd>`.
+../isonim`) or run commands via `nix develop ../isonim -c <cmd>`.
 - The `isonim` framework source is the sibling checkout `../isonim`
   (`../isonim/src`). Shared deps: `../nim-everywhere/src`, `../nim-faststreams`.
   Study these templates before writing code:
@@ -46,6 +46,7 @@ for each deliverable, write the failing test, then the code that makes it pass.
 ## M0 (first milestone) — establish a green build
 
 Reproducible build + test framework BEFORE feature work:
+
 - `isonim_docs.nimble` (requires `isonim`, `nim_everywhere`, `faststreams`,
   `chronicles`), `config.nims` path-switching to `../isonim/src` and
   `../nim-everywhere/src` (mirror `../isonim/demos/config.nims`), a `Justfile`,

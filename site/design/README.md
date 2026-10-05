@@ -57,15 +57,15 @@ server instead of just opening `index.html`.
 
 ## Files
 
-| File | What |
-|------|------|
-| `main.nim` | The `nim js` editor client (mounts the editor, wires the Save `fetch`) |
-| `serve.nim` | The native host server: serves the editor + the `/__isonim_save` writeback route |
+| File                 | What                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| `main.nim`           | The `nim js` editor client (mounts the editor, wires the Save `fetch`)                                  |
+| `serve.nim`          | The native host server: serves the editor + the `/__isonim_save` writeback route                        |
 | `dtcg_workspace.nim` | Builds the editor workspace: foundation tokens, component stories, live-preview hook, web-only platform |
-| `dtcg_writeback.nim` | The structure-preserving writeback to `codetracer-docs.tokens.json` |
-| `config.nims` | Sibling-checkout paths the editor build needs |
-| `index.html` | The editor host page |
-| `tests/` | Headless view-model tests incl. the full click-to-save loop |
+| `dtcg_writeback.nim` | The structure-preserving writeback to `codetracer-docs.tokens.json`                                     |
+| `config.nims`        | Sibling-checkout paths the editor build needs                                                           |
+| `index.html`         | The editor host page                                                                                    |
+| `tests/`             | Headless view-model tests incl. the full click-to-save loop                                             |
 
 ## Platforms
 

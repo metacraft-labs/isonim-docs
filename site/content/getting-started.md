@@ -3,9 +3,10 @@ title: Getting Started
 description: Scaffold an isonim-docs consumer, author content with frontmatter, and build or serve the site.
 order: 1
 ---
+
 # Getting Started
 
-An isonim-docs *consumer* is a small Nim package that supplies its own
+An isonim-docs _consumer_ is a small Nim package that supplies its own
 `content/`, its own `DocsConfig`, and a thin build entry that calls the
 framework. isonim-docs itself ships no content -- it is content-agnostic --
 so every site (including this one) is a consumer.

@@ -3,11 +3,12 @@ title: Live Component Embedding
 description: Extracting custom component tags from markdown into bkComponent AST nodes, binding them by name to a consumer registry, per-embed isolated state, and the error boundary.
 order: 9
 ---
+
 # Live Component Embedding
 
 isonim-docs lets a page embed live, interactive components written by the
 consumer. A JSX-style tag in the markdown is extracted into a typed
-`bkComponent` AST node and bound *by name* to a component the consumer
+`bkComponent` AST node and bound _by name_ to a component the consumer
 registered -- the framework ships none of its own, staying content-agnostic.
 
 ## Extracting component tags

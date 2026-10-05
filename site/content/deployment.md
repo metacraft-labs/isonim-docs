@@ -3,6 +3,7 @@ title: Deployment (nginx Adapter)
 description: The --target=nginx build producing an nginx-link-function SSR module, and the content-agnostic adapter that wires the framework's renderer to the C-ABI.
 order: 14
 ---
+
 # Deployment: the nginx Adapter
 
 Beyond the default static build (a directory of HTML you can host anywhere),

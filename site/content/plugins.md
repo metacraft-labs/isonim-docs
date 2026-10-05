@@ -3,6 +3,7 @@ title: Plugins
 description: The deterministic plugin host with onConfig / preParse / postParse / onRender / onBuildComplete lifecycle hooks and custom markdown-directive registration.
 order: 11
 ---
+
 # Plugins
 
 The plugin host lets a consumer (or the framework itself) hook the

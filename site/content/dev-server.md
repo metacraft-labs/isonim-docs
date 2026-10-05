@@ -3,6 +3,7 @@ title: Dev Server & Live Reload
 description: The development server built on the SSR render path, its content-tree file watcher, the websocket live-reload channel, and the full-page error overlay.
 order: 12
 ---
+
 # Dev Server & Live Reload
 
 The development server serves routes through the framework's own
@@ -68,8 +69,7 @@ doAssert "about.md" in changed
 ## The error overlay
 
 On a render or build failure the dev server does not serve a blank page or
-crash: `handleRoute` returns a full-page **browser error overlay** (status
-500) carrying the failure message, so a mistake in a content file surfaces
+crash: `handleRoute` returns a full-page **browser error overlay** (status 500) carrying the failure message, so a mistake in a content file surfaces
 immediately and legibly. The overlay reuses the same live-reload channel, so
 fixing the file reloads the page automatically.
 

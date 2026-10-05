@@ -3,6 +3,7 @@ title: Routing
 description: How isonim-docs resolves routes -- auto-discovery from content, or an explicit hand-authored manifest.
 order: 2
 ---
+
 # Routing
 
 A **route manifest** is the single source of truth for route resolution: a

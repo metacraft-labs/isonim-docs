@@ -3,6 +3,7 @@ title: CSP & Analytics
 description: Build-time Content-Security-Policy generation with per-page inline-script SHA-256 hashing, and a vendor-neutral, DNT-honoring analytics adapter emitted only when configured.
 order: 15
 ---
+
 # CSP & Analytics
 
 Two security- and privacy-facing features round out the head: a build-time

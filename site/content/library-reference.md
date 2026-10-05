@@ -3,6 +3,7 @@ title: Library API Reference
 description: Nim source/docstring ingestion into a symbol reference model, stable per-symbol anchors, and the [[sym:...]] cross-reference syntax resolved by the reference checker.
 order: 8
 ---
+
 # Library API Reference
 
 For documenting a Nim library, isonim-docs renders a source file as a
