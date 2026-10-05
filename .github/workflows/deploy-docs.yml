@@ -23,60 +23,24 @@ jobs:
     permissions:
       contents: write # push the built site to the gh-pages branch
     steps:
-      # site/ builds against sibling source checkouts via config.nims's `--path`
-      # switches (isonim + its vendored deps, nim-everywhere, nim-faststreams,
-      # nim-stew), laid out at the workspace root -- exactly the layout the
-      # isonim-docs CI test job uses. The toolchain comes from the isonim flake.
+      # The primary checkout stays at GITHUB_WORKSPACE. The shared helper
+      # restores all five declared adjacent source repositories from repro.lock;
+      # the owning docs flake supplies the immutable development toolchain.
       - name: Check out isonim-docs
         uses: actions/checkout@v4
-        with:
-          path: isonim-docs
 
-      - name: Check out isonim (sibling)
-        uses: actions/checkout@v4
+      - name: Setup owning docs environment and locked sibling sources
+        uses: metacraft-labs/metacraft-github-actions/setup-dev-env@dev
         with:
-          repository: metacraft-labs/isonim
-          path: isonim
-
-      - name: Check out nim-everywhere (sibling)
-        uses: actions/checkout@v4
-        with:
-          repository: metacraft-labs/nim-everywhere
-          path: nim-everywhere
-
-      - name: Check out nim-faststreams (sibling)
-        uses: actions/checkout@v4
-        with:
-          repository: metacraft-labs/nim-faststreams
-          path: nim-faststreams
-
-      - name: Check out nim-stew (sibling)
-        uses: actions/checkout@v4
-        with:
-          repository: metacraft-labs/nim-stew
-          path: nim-stew
-
-      # site/'s theme_tokens loads the Metacraft brand/alias/mapped DTCG token
-      # set from the codetracer-design-system repo (a workspace-root sibling);
-      # the build reads its JSON directly, so it must be checked out.
-      - name: Check out codetracer-design-system (sibling — DTCG design tokens)
-        uses: actions/checkout@v4
-        with:
-          repository: metacraft-labs/codetracer-design-system
-          path: codetracer-design-system
-
-      - name: Setup Nix
-        uses: metacraft-labs/devops-modules/.github/setup-nix@dev
-        with:
+          env-flavor: nix
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
           trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
           substituters: ${{ vars.SUBSTITUTERS }}
-          nix-github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ci/deploy/docs.sh builds site/ under the isonim dev shell and force-pushes
+      # ci/deploy/docs.sh builds site/ under the owning docs shell and force-pushes
       # site/public/ to the gh-pages orphan branch (origin = this repo; the
       # default GITHUB_TOKEN with contents:write authorizes the same-repo push).
       - name: Build + deploy self-docs to gh-pages
-        working-directory: isonim-docs
         env:
           DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }} # same-repo gh-pages push (contents:write)
         run: ./ci/deploy/docs.sh

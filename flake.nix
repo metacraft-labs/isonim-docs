@@ -40,7 +40,18 @@
           # Inherit the entire isonim toolchain. isonim-docs adds no tools of
           # its own — the SSG builds with plain ``nim c`` / ``nim js`` + node,
           # all of which isonim's shell already provides.
-          inputsFrom = [ isonim.devShells.${system}.default ];
+          #
+          # The toolchain only: isonim's ``shellHook`` is dropped. ``inputsFrom``
+          # would otherwise run it here, and it installs isonim's git hooks
+          # (``.pre-commit-config.yaml``, ``.git/hooks``) into the git checkout
+          # the shell is entered from -- isonim-docs itself, or any other
+          # repository ``nix develop /path/to/isonim-docs`` is run in.
+          # tests/test_dev_shell_writes_nothing_elsewhere.sh
+          inputsFrom = [
+            (isonim.devShells.${system}.default.overrideAttrs (_: {
+              shellHook = "";
+            }))
+          ];
 
           shellHook = ''
             echo "isonim-docs dev shell — reusing isonim's toolchain (nim $(nim --version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'), node $(node --version))"
