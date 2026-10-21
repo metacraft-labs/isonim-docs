@@ -10,7 +10,8 @@
 ##   * `:::button href variant`                -> a standalone `bkButton`
 ##   * `:::faq`   / `:::q title`               -> a `bkFaq` of `<details>`
 ##
-## The suite asserts (a) each directive parses to the right AST node, (b)
+## The suite asserts (a) each directive parses to the right AST node (those
+## cases moved to IsoNim with the parser: isonim/content/markdown), (b)
 ## both the MockRenderer/browser-tree renderer AND the SSR-string renderer
 ## emit the expected structure (dual-target parity), and (c) the framework
 ## default is UNCHANGED: a plain markdown page containing none of these
@@ -24,103 +25,13 @@ import ./helpers/mock_tree
 
 # --- Pure parsing (Tier 1, dual-target) ---------------------------------
 
-suite "docs content components -- parsing (Tier 1, dual-target)":
-  test ":::cards / :::card parses into a bkCardGrid with title/icon/href + description":
-    let raw = ":::cards\n" &
-      ":::card title=\"Getting Started\" icon=\"/img/start.svg\" href=\"guide/start.md\"\n" &
-      "Install and record your first trace.\n" &
-      ":::card title=\"Reference\" icon=\"/img/ref.svg\" href=\"reference.md\"\n" &
-      "The full API surface.\n" &
-      ":::"
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 1
-    check blocks[0].kind == bkCardGrid
-    check blocks[0].cards.len == 2
-    check blocks[0].cards[0].title == "Getting Started"
-    check blocks[0].cards[0].icon == "/img/start.svg"
-    check blocks[0].cards[0].href == "guide/start.md"
-    check spansText(blocks[0].cards[0].body[0]) == "Install and record your first trace."
-    check blocks[0].cards[1].title == "Reference"
-    check spansText(blocks[0].cards[1].body[0]) == "The full API surface."
-    # M6: a plain `:::cards` grid has NO variant, so it keeps the default
-    # (category-card) look byte-for-byte.
-    check blocks[0].gridVariant == ""
-
-  test "M6: :::cards variant=\"compact\" parses gridVariant, unknown/absent normalizes to \"\"":
-    let compact = parseMarkdownBlocks(
-      ":::cards variant=\"compact\"\n:::card title=\"Introduction\" href=\"a.md\"\nGetting Started\n:::")
-    check compact.len == 1
-    check compact[0].kind == bkCardGrid
-    check compact[0].gridVariant == "compact"
-    # An unrecognized value falls back to the default (empty) variant, so a
-    # typo can never silently change an existing grid's look.
-    let bogus = parseMarkdownBlocks(":::cards variant=\"wide\"\n:::card title=\"X\" href=\"x.md\"\nY\n:::")
-    check bogus[0].gridVariant == ""
-
+suite "docs content components -- view helpers over parsed blocks (Tier 1, dual-target)":
+  # The pure parsing cases of this suite moved to IsoNim with the parser
+  # (isonim/content/markdown, tests/test_content_markdown.nim). These stay:
+  # they check markdown_view's helpers over the parsed blocks.
   test "M6: pageHasHero detects a landing (hero present) vs a normal article":
     check pageHasHero(parseMarkdownBlocks(":::hero title=\"Welcome\"\n:::"))
     check not pageHasHero(parseMarkdownBlocks("## Heading\n\nA paragraph.\n"))
-
-  test ":::hero parses title/subtitle attrs and its :::button action list":
-    let raw = ":::hero title=\"Welcome\" subtitle=\"Docs for everyone\"\n" &
-      ":::button href=\"start.md\" variant=\"primary\"\n" &
-      "Get Started\n" &
-      ":::button href=\"support.md\" variant=\"secondary\"\n" &
-      "Support\n" &
-      ":::"
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 1
-    check blocks[0].kind == bkHero
-    check blocks[0].heroTitle == "Welcome"
-    check blocks[0].heroSubtitle == "Docs for everyone"
-    check blocks[0].heroButtons.len == 2
-    check blocks[0].heroButtons[0].label == "Get Started"
-    check blocks[0].heroButtons[0].href == "start.md"
-    check blocks[0].heroButtons[0].variant == "primary"
-    check blocks[0].heroButtons[1].label == "Support"
-    check blocks[0].heroButtons[1].variant == "secondary"
-
-  test ":::button parses into a standalone bkButton (variant defaults to primary)":
-    let raw = ":::button href=\"start.md\"\nGet Started\n:::"
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 1
-    check blocks[0].kind == bkButton
-    check blocks[0].button.label == "Get Started"
-    check blocks[0].button.href == "start.md"
-    check blocks[0].button.variant == "primary"
-
-  test ":::faq / :::q parses into a bkFaq with question + answer paragraphs":
-    let raw = ":::faq\n" &
-      ":::q title=\"What is it?\"\n" &
-      "A time-traveling debugger.\n" &
-      ":::q title=\"Which languages?\"\n" &
-      "Noir, Ruby and more.\n" &
-      ":::"
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 1
-    check blocks[0].kind == bkFaq
-    check blocks[0].faqItems.len == 2
-    check blocks[0].faqItems[0].question == "What is it?"
-    check spansText(blocks[0].faqItems[0].answer[0]) == "A time-traveling debugger."
-    check blocks[0].faqItems[1].question == "Which languages?"
-    check spansText(blocks[0].faqItems[1].answer[0]) == "Noir, Ruby and more."
-
-  test "M3: :::video parses a bare YouTube id into a bkVideo":
-    let blocks = parseMarkdownBlocks(":::video xZsJ55JVqmU")
-    check blocks.len == 1
-    check blocks[0].kind == bkVideo
-    check blocks[0].videoId == "xZsJ55JVqmU"
-    check blocks[0].videoSrc == ""
-
-  test "M3: :::video extracts the id from watch / youtu.be / embed URLs and reads title=":
-    check parseMarkdownBlocks(
-      ":::video https://www.youtube.com/watch?v=xZsJ55JVqmU&t=1")[0].videoId == "xZsJ55JVqmU"
-    check parseMarkdownBlocks(":::video https://youtu.be/xZsJ55JVqmU")[0].videoId == "xZsJ55JVqmU"
-    check parseMarkdownBlocks(
-      ":::video https://www.youtube.com/embed/xZsJ55JVqmU")[0].videoId == "xZsJ55JVqmU"
-    let titled = parseMarkdownBlocks(":::video xZsJ55JVqmU title=\"Noir Demo\"")[0]
-    check titled.videoId == "xZsJ55JVqmU"
-    check titled.videoTitle == "Noir Demo"
 
   test "M3: :::video src=\"...\" overrides the id and is used verbatim":
     let blk = parseMarkdownBlocks(":::video src=\"https://example.com/e/abc\" title=\"X\"")[0]
@@ -135,67 +46,9 @@ suite "docs content components -- parsing (Tier 1, dual-target)":
     check empty[0].videoId == ""
     check videoEmbedSrc(empty[0]) == ""
 
-  test ":::form parses action/method/submit + a full field set into a bkForm":
-    let raw = ":::form action=\"/support\" method=\"get\" submit=\"Send message\"\n" &
-      "@field name=\"Email\" label=\"Email address\" type=email placeholder=\"Email\" required\n" &
-      "@field name=\"Name\" label=\"Name\" type=text required\n" &
-      "@field name=\"Category\" label=\"Category\" type=select options=\"Payments,Account,Software\" required\n" &
-      "@field name=\"Message\" label=\"Message\" type=textarea required\n" &
-      "@field name=\"remember\" label=\"Remember me\" type=checkbox\n" &
-      ":::"
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 1
-    check blocks[0].kind == bkForm
-    check blocks[0].formAction == "/support"
-    check blocks[0].formMethod == "get"
-    check blocks[0].formSubmit == "Send message"
-    check blocks[0].formFields.len == 5
-    check blocks[0].formFields[0].name == "Email"
-    check blocks[0].formFields[0].label == "Email address"
-    check blocks[0].formFields[0].kind == ffkEmail
-    check blocks[0].formFields[0].placeholder == "Email"
-    check blocks[0].formFields[0].required
-    check blocks[0].formFields[1].kind == ffkText
-    check blocks[0].formFields[2].kind == ffkSelect
-    check blocks[0].formFields[2].options == @["Payments", "Account", "Software"]
-    check blocks[0].formFields[3].kind == ffkTextarea
-    check blocks[0].formFields[4].kind == ffkCheckbox
-    check not blocks[0].formFields[4].required
-
-  test ":::form submit defaults + malformed lines are handled safely":
-    # No submit= attr -> a sensible default label; a stray non-@field line is
-    # ignored; an unknown type falls back to a plain text input; nothing raises.
-    let raw = ":::form\n" &
-      "Some stray prose that is not a field.\n" &
-      "@field name=\"Email\" label=\"Email\" type=wobble\n" &
-      "@field name=\"pw\" label=\"Password\" type=password\n" &
-      ":::"
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 1
-    check blocks[0].kind == bkForm
-    check blocks[0].formSubmit == "Submit"       # default
-    check blocks[0].formFields.len == 2           # the stray line is ignored
-    check blocks[0].formFields[0].kind == ffkText # unknown type -> text
-    check blocks[0].formFields[1].kind == ffkPassword
-
-  test "components parse alongside other blocks in document order":
-    let raw = "Intro paragraph.\n\n:::button href=\"x.md\"\nGo\n:::\n\nAfter."
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 3
-    check blocks[0].kind == bkParagraph
-    check blocks[1].kind == bkButton
-    check blocks[2].kind == bkParagraph
-
 # --- Framework default unchanged (Tier 1, dual-target) ------------------
 
 suite "docs content components -- framework default is unchanged (Tier 1, dual-target)":
-  test "a plain markdown page parses to NONE of the new component block kinds":
-    let raw = "## Heading\n\nA paragraph with `code` and a [link](other.md).\n\n" &
-      "- one\n- two\n\n:::note\nAn admonition.\n:::\n\n" &
-      "```nim\nlet x = 1\n```\n"
-    for blk in parseMarkdownBlocks(raw):
-      check blk.kind notin {bkCardGrid, bkHero, bkButton, bkFaq, bkVideo}
-
   test "a plain markdown page renders NONE of the component markup (SSR)":
     let raw = "## Heading\n\nA paragraph.\n\n- one\n- two\n\n:::tip\nTip.\n:::\n"
     let html = renderMarkdownBodyHtml(parseMarkdownBlocks(raw))

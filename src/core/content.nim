@@ -20,8 +20,18 @@
 ## harness mocks the filesystem.
 
 import std/[strutils, algorithm]
+import isonim/content/frontmatter
+import isonim/content/markdown
 when not defined(js):
   import std/os
+
+# `splitFrontMatter` moved to IsoNim (`isonim/content/frontmatter`)
+# unchanged; it stays reachable from here so existing imports keep
+# compiling. That module also reads front matter as a documented YAML
+# subset (`parseFrontMatterBlock`); `parseFrontMatter` below keeps
+# isonim-docs' own lenient `key: value` reading, so the typed fields and
+# the built output are unchanged.
+export splitFrontMatter
 
 type
   DocsPage* = object
@@ -157,25 +167,6 @@ type
     routePath*: string
     source*: ContentSource
 
-proc splitFrontMatter*(raw: string): tuple[frontRaw: string, bodyRaw: string, bodyLine: int] =
-  ## Splits a leading `---\n...\n---\n` front matter block (if present)
-  ## from the rest of the content. Pure line splitting -- no assumptions
-  ## about the frontmatter's contents, so it tolerates any key set.
-  ## Returns the front matter text, the remaining body text, and the
-  ## 1-based line the body starts at (1 when there's no front matter).
-  let lines = raw.splitLines()
-  if lines.len > 0 and lines[0].strip() == "---":
-    var closeIdx = -1
-    for i in 1 ..< lines.len:
-      if lines[i].strip() == "---":
-        closeIdx = i
-        break
-    if closeIdx >= 0:
-      let frontLines = lines[1 ..< closeIdx]
-      let bodyLines = if closeIdx + 1 < lines.len: lines[closeIdx + 1 .. ^1] else: @[]
-      return (frontLines.join("\n"), bodyLines.join("\n"), closeIdx + 2)
-  (frontRaw: "", bodyRaw: raw, bodyLine: 1)
-
 proc splitFrontMatterList(value: string): seq[string] =
   ## Splits a comma-separated front matter value ("aliases: /a, /b") into
   ## its trimmed, non-empty parts. A bare `key:` with no value (or one
@@ -225,13 +216,7 @@ proc deriveSlug*(relPath: string; front: ContentFrontMatter): string =
   ## an OS path), so it's the same on every target.
   if front.slug.len > 0:
     return front.slug
-  var base = relPath
-  let slashIdx = base.rfind('/')
-  if slashIdx >= 0:
-    base = base[slashIdx + 1 .. ^1]
-  if base.endsWith(".md"):
-    base = base[0 ..< base.len - 3]
-  base
+  contentPathSlug(relPath)
 
 proc deriveSection*(relPath: string; front: ContentFrontMatter): string =
   ## The section a page belongs to: an explicit front matter `section:`
@@ -240,18 +225,15 @@ proc deriveSection*(relPath: string; front: ContentFrontMatter): string =
   ## need to repeat `section: guide` in every file's front matter.
   if front.section.len > 0:
     return front.section
-  let slashIdx = relPath.rfind('/')
-  if slashIdx >= 0: relPath[0 ..< slashIdx] else: ""
+  contentPathSection(relPath)
 
 proc deriveRoutePath*(section, slug: string): string =
   ## The route path a page binds to: a bare content root ("" section)
   ## with slug "index" is the site root "/"; an "index" page inside a
   ## section is that section's own root; everything else is
-  ## "/section/slug" (or just "/slug" with no section).
-  if slug == "index":
-    (if section.len == 0: "/" else: "/" & section)
-  else:
-    (if section.len == 0: "/" & slug else: "/" & section & "/" & slug)
+  ## "/section/slug" (or just "/slug" with no section). The same
+  ## convention `isonim/content/markdown` falls back on for `.md` links.
+  contentRoutePath(section, slug)
 
 proc parseContentEntry*(raw: string; relPath: string): ContentEntry =
   ## The pure per-file parsing step `loadContentEntries` calls for every

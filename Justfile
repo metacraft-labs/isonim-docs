@@ -14,8 +14,7 @@ docs-test-c:
     nim c -r tests/docs/test_routes_mock.nim
     nim c -r tests/docs/test_routes_renderroute.nim
     nim c -r tests/docs/test_routes_logging.nim
-    nim c -r tests/docs/test_markdown_vm.nim
-    nim c -r tests/docs/test_markdown_anchor_ids.nim
+    nim c -r tests/docs/test_content_vm.nim
     nim c -r tests/docs/test_markdown_mock.nim
     nim c -r tests/docs/test_markdown_tabs.nim
     nim c -r tests/docs/test_content_components.nim
@@ -70,8 +69,8 @@ docs-test-c:
     nim c -r tests/docs/test_csp_analytics.nim
     nim c -r tests/docs/test_optional_config_hooks_are_noops_when_unset.nim
     nim c -r tests/docs/test_chrome_hooks_noop_when_unset.nim
-    nim c -r tests/tokens/test_dtcg_resolver.nim
     nim c -r tests/tokens/test_token_css_emitter.nim
+    nim c -r tests/test_markdown_ast_compat.nim
 
 # isonim's `ui` DSL unconditionally imports `isonim/dsl/tailwind`, which
 # under the JS target hard-requires ../isonim/build/tailwind-styles.json
@@ -92,8 +91,7 @@ docs-test-js: tailwind-bootstrap
     nim js -r tests/docs/test_routes_mock.nim
     nim js -r tests/docs/test_routes_browser_mount.nim
     nim js -r tests/docs/test_manifest_from_content.nim
-    nim js -r tests/docs/test_markdown_vm.nim
-    nim js -r tests/docs/test_markdown_anchor_ids.nim
+    nim js -r tests/docs/test_content_vm.nim
     nim js -r tests/docs/test_markdown_mock.nim
     nim js -r tests/docs/test_markdown_tabs.nim
     nim js -r tests/docs/test_content_components.nim
@@ -133,6 +131,7 @@ docs-test-js: tailwind-bootstrap
     nim js -r tests/docs/test_plugin_hooks.nim
     nim js -r tests/docs/test_server_search.nim
     nim js -r tests/docs/test_csp_analytics.nim
+    nim js -r tests/test_markdown_ast_compat.nim
 
 # Run the full dual-target docs test matrix.
 docs-test: docs-test-c docs-test-js
@@ -162,6 +161,44 @@ ci-docs: docs-test docs-smoke
 docs-build: tailwind-bootstrap
     nim c -r --hints:off -o:build/build_site src/build_site.nim
 
+# --- Output stability: built sites are byte-identical to their goldens ---
+# `tests/golden/` holds the built output of two fixture sites, committed
+# byte for byte (the pre-commit hooks exclude it): `mini-site/` is
+# `docs-build`'s own output (./public), and `content-site/` is
+# tests/fixtures/content-site/ built by tests/build_golden_sites.nim, a
+# fixture that exercises anchors, links, highlighting in every language,
+# admonitions, tabs, the content directives and a plugin directive. A
+# change that moves code without meaning to change output -- such as moving
+# the content libraries into IsoNim -- must leave both identical; a change
+# that does mean to change output re-records them on purpose with
+# `docs-build-golden-update` and shows the diff in review.
+docs-build-golden-check: docs-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nim c -r --hints:off -o:build/build_golden_sites tests/build_golden_sites.nim build/golden
+    status=0
+    for pair in "mini-site public" "content-site build/golden/content-site"; do
+      read -r name built <<< "$pair"
+      if diff -r -q "tests/golden/$name" "$built"; then
+        echo "golden $name: byte-identical"
+      else
+        echo "golden $name: the build in $built differs (first 80 lines of the diff below)." >&2
+        diff -r -u "tests/golden/$name" "$built" | head -n 80 >&2 || true
+        status=1
+      fi
+    done
+    if [ "$status" -ne 0 ]; then
+      echo "If the change is intended, run: just docs-build-golden-update, and review the diff." >&2
+    fi
+    exit "$status"
+
+# Re-record the goldens from fresh builds (an intended output change).
+docs-build-golden-update: docs-build
+    nim c -r --hints:off -o:build/build_golden_sites tests/build_golden_sites.nim build/golden
+    rm -rf tests/golden/mini-site tests/golden/content-site
+    cp -R public tests/golden/mini-site
+    cp -R build/golden/content-site tests/golden/content-site
+
 # --- M11 deliverable 2: dev server ---
 # Live-reloading dev server (HTTP + file watcher + websocket live-reload +
 # a browser error overlay on build failure) over the checked-in mini-site
@@ -182,9 +219,9 @@ docs-cli *ARGS:
 # A releasable candidate must pass every check with no hidden manual steps:
 # full dual-target test suite (clean build + no broken links + search coverage
 # + examples compile + SSR render + JS mount parity), the compile smoke, and a
-# clean production build.
-release-gate: docs-test docs-smoke docs-build
-    @echo "RELEASE GATE PASSED: tests green (C+JS), smoke ok, site built to ./public"
+# clean production build, with the fixture builds byte-identical to their goldens.
+release-gate: docs-test docs-smoke docs-build docs-build-golden-check
+    @echo "RELEASE GATE PASSED: tests green (C+JS), smoke ok, site built to ./public, goldens identical"
 
 # Entering the dev shell from another git repository must write nothing there.
 # Runs `nix develop`, so it is not part of the in-shell test recipes.

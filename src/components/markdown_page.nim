@@ -15,7 +15,7 @@
 ## mixing it with the DSL for the static header/nav/footer chrome.
 
 import isonim/ssr/escape
-import ../core/markdown_vm
+import isonim/content/markdown
 import ../core/shell_vm
 import ../core/navigation_vm
 import ../core/search_vm

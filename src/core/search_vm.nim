@@ -26,7 +26,7 @@
 import std/[algorithm, strutils, json]
 import ./content
 import ./routes
-import ./markdown_vm
+import isonim/content/markdown
 
 type
   SearchEntry* = object

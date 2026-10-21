@@ -16,16 +16,23 @@
 ## directive's argument line + raw body into rendered `Block`s, spliced
 ## into the document exactly where the directive appeared.
 ##
+## The parser-level part -- `preParse`, `postParse` and the directives --
+## lives in IsoNim as `isonim/content/directives` (`ParseHooks`), shared
+## with every other IsoNim content consumer. A `PluginHost` hands its
+## plugins' parser hooks to it (`parseHooks`), so directive resolution and
+## hook ordering are that module's, and only the configuration, render
+## and build hooks are isonim-docs' own. `DirectiveRenderer` and
+## `DirectiveRegistration` are re-exported from there unchanged.
+##
 ## Pure data + closures, no platform imports (no `std/os`, no filesystem),
 ## so this module is identical under `nim c` and `nim js` and every hook
-## is Tier-1-testable on both backends -- the same cross-platform rule
-## `config.nim`/`markdown_vm.nim` already follow. `markdown_vm.nim` never
-## imports this module (it takes bare directive closures instead), so
-## there is no import cycle: `plugin.nim` depends on `markdown_vm.nim`,
-## not the reverse.
+## is Tier-1-testable on both backends.
 
 import ./config
-import ./markdown_vm
+import isonim/content/markdown
+import isonim/content/directives
+
+export DirectiveRenderer, DirectiveRegistration
 
 type
   BuildInfo* = object
@@ -35,20 +42,6 @@ type
     ## fills the real numbers after a static build finishes.
     pageCount*: int
     outDir*: string
-
-  DirectiveRenderer* = proc(args: string; body: string): seq[Block] {.closure.}
-    ## Renders one custom `:::name args ... :::` block. `args` is the rest
-    ## of the opening `:::name` line (trimmed); `body` is the raw inner
-    ## text between the opening line and the closing `:::` (verbatim, so a
-    ## directive can re-parse it, treat it as data, etc.). The returned
-    ## blocks are spliced into the document in place of the directive.
-
-  DirectiveRegistration* = object
-    ## One `name -> renderer` mapping a plugin contributes. A directive
-    ## `name` is matched case-sensitively against the first token after
-    ## `:::` (e.g. `youtube` matches `:::youtube dQw4w9WgXcQ`).
-    name*: string
-    render*: DirectiveRenderer
 
   Plugin* = object
     ## One registered plugin. Every hook is optional -- a nil closure
@@ -93,21 +86,24 @@ proc applyOnConfig*(host: PluginHost; cfg: var DocsConfig) =
     if not p.onConfig.isNil:
       p.onConfig(cfg)
 
+proc parseHooks*(host: PluginHost): seq[ParseHooks] =
+  ## The parser-level part of every plugin, in registration order: what
+  ## `isonim/content/directives` runs for `preParse`, `postParse` and
+  ## the directives.
+  for p in host.plugins:
+    result.add ParseHooks(name: p.name, preParse: p.preParse,
+                          postParse: p.postParse, directives: p.directives)
+
 proc applyPreParse*(host: PluginHost; body: string): string =
   ## Threads a page's raw markdown through every `preParse` in order; each
   ## hook sees the previous hook's output (a real transform pipeline).
-  result = body
-  for p in host.plugins:
-    if not p.preParse.isNil:
-      result = p.preParse(result)
+  host.parseHooks.applyPreParse(body)
 
 proc applyPostParse*(host: PluginHost; doc: var MarkdownDoc) =
   ## Fires every `postParse` in order over the parsed AST. Hooks mutate
   ## `doc.blocks` in place (the AST-access deliverable); a hook that
   ## changes the heading set is responsible for `doc.headingTree` too.
-  for p in host.plugins:
-    if not p.postParse.isNil:
-      p.postParse(doc)
+  host.parseHooks.applyPostParse(doc)
 
 proc applyOnRender*(host: PluginHost; html: string): string =
   ## Threads a page's final HTML string through every `onRender` in order;
@@ -132,21 +128,13 @@ proc knowsDirective*(host: PluginHost; name: string): bool =
   ## First-match semantics mean the earliest-registered plugin owns a name
   ## if two register the same one (deterministic), so this predicate and
   ## `renderDirective` below always agree.
-  for p in host.plugins:
-    for d in p.directives:
-      if d.name == name:
-        return true
-  false
+  host.parseHooks.knowsDirective(name)
 
 proc renderDirectiveBlocks*(host: PluginHost; name, args, body: string): seq[Block] =
   ## Runs the first registered renderer for `name` over `(args, body)`.
   ## Returns an empty block list when no plugin owns `name` (the parser
   ## gates this behind `knowsDirective`, so in practice a match exists).
-  for p in host.plugins:
-    for d in p.directives:
-      if d.name == name and not d.render.isNil:
-        return d.render(args, body)
-  @[]
+  host.parseHooks.renderDirectiveBlocks(name, args, body)
 
 # --- Plugin-aware markdown parsing --------------------------------------
 
@@ -161,11 +149,5 @@ proc parseMarkdownDocWithPlugins*(host: PluginHost; body: string;
   ## `:::name` renders), then `postParse` runs over the resulting AST.
   ## With an empty host this is exactly `parseMarkdownDoc(body, ...)` --
   ## the directive closures are nil and both hook loops are no-ops.
-  let transformed = host.applyPreParse(body)
-  let known = proc(name: string): bool = host.knowsDirective(name)
-  let render = proc(name, args, dbody: string): seq[Block] =
-    host.renderDirectiveBlocks(name, args, dbody)
-  result = parseMarkdownDoc(transformed, sourceRelPath, resolveContentPath,
-    resolveSymbol, isComponentKnown,
-    knownDirective = known, renderDirective = render)
-  host.applyPostParse(result)
+  parseMarkdownDocWithHooks(host.parseHooks, body, sourceRelPath,
+    resolveContentPath, resolveSymbol, isComponentKnown)

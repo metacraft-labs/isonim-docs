@@ -19,7 +19,7 @@
 
 import std/strutils
 import ./openapi
-import ./anchors
+import isonim/content/anchors
 
 type
   ApiParamRow* = object

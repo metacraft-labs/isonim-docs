@@ -1,0 +1,12 @@
+h2#what-changed t(What changed)
+p t(Deploys are **faster** and logs are easier to search ()a(details|https://example.com/c|false)t().)
+ul
+  li t(Run )c(acme self-update)
+  li t(Deploy as usual)
+code[] "$ acme deploy\x0Adone in 41s"
+p t(> Quoted feedback.)
+p t(---)
+table A|B
+  tr t(1) | t(2)
+callout(warning)
+  p t(One setting goes away in November.)

@@ -22,7 +22,7 @@
 import std/[algorithm, strutils]
 import ./content
 import ./routes
-import ./markdown_vm
+import isonim/content/markdown
 
 type
   NavPage* = object

@@ -1,0 +1,18 @@
+h1#everything-a-body-can-hold t(Everything a body can hold)
+p t(A paragraph with **strong**, *emphasis*, ***both***, ~~struck~~ text, )c(inline code)t(, a )a(link|https://example.com/docs "The docs"|false)t( and an autolink: <https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/single/space/in/it>. A word that never breaks: Pneumonoultramicroscopicsilicovolcanoconiosis-and-then-some-more-letters. Hard break here\ and the next line.)
+p t(Second level ------------)
+ul
+  li t(A bullet)
+  li t(Another, with )c(code)
+ol
+  li t(First)
+  li t(Second)
+code[] "for i in 0 ..< 3:\x0A  echo \"line \", i, \" of a code block whose line is long enough to wrap\""
+p t(> A quotation, read as Markdown again: *emphasis* inside.)
+p t(***)
+table Plan|Seats|Price
+  tr t(Hobby) | t(1) | t(Free)
+  tr t(Team) | t(5) | t(**$20**)
+callout(info)
+  p t(An admonition becomes a callout.)
+button(primary|https://example.com/start) Get started

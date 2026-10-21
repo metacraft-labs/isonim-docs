@@ -17,7 +17,7 @@ import ./core/content
 import ./core/config
 import ./core/routes
 import ./core/shell_vm
-import ./core/markdown_vm
+import isonim/content/markdown
 import ./core/navigation_vm
 import ./core/references
 import ./core/openapi

@@ -13,7 +13,7 @@
 ## are kept byte-for-byte in lock-step, exactly like every other page frame.
 
 import ../core/tutorial_vm
-import ../core/markdown_vm
+import isonim/content/markdown
 import ../core/shell_vm
 import ../core/navigation_vm
 import ../core/search_vm

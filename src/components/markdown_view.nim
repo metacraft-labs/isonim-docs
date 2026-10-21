@@ -16,8 +16,8 @@
 
 import std/strutils
 import isonim/ssr/escape
-import ../core/markdown_vm
-import ../core/syntax_highlight
+import isonim/content/markdown
+import isonim/content/highlight
 import ./component_registry
 import ./error_boundary
 import ./image_viewer

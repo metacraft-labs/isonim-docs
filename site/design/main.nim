@@ -18,7 +18,7 @@ when not defined(js):
 import isonim/core/signals
 import isonim/editor
 import isonim/editor/browser
-import core/tokens
+import isonim/theming/dtcg
 import ../src/theme_tokens
 import ./dtcg_workspace
 

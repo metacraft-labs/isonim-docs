@@ -23,7 +23,7 @@
 import std/[tables, sets, strutils]
 import ./content
 import ./routes
-import ./markdown_vm
+import isonim/content/markdown
 
 type
   ReferenceIssueKind* = enum

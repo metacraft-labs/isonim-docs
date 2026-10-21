@@ -12,7 +12,7 @@
 
 import isonim/ssr/escape
 import ../core/navigation_vm
-import ../core/markdown_vm
+import isonim/content/markdown
 
 const
   navRegionClass* = "docs-navigation"

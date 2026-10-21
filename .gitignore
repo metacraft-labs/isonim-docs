@@ -26,8 +26,7 @@ tests/docs/test_content_loader
 tests/docs/test_manifest_from_content
 tests/docs/test_manifest_from_content_renderroute
 tests/docs/test_autoroute_renderroute
-tests/docs/test_markdown_vm
-tests/docs/test_markdown_anchor_ids
+tests/docs/test_content_vm
 tests/docs/test_markdown_mock
 tests/docs/test_markdown_tabs
 tests/docs/test_markdown_renderroute
@@ -71,6 +70,17 @@ tests/docs/test_versioning_renderroute
 tests/docs/test_i18n
 tests/docs/test_i18n_renderroute
 tests/docs/test_nimcache_is_worktree_local
+tests/test_markdown_ast_compat
+tests/docs/test_content_components
+tests/docs/test_plugin_hooks
+tests/tokens/test_token_css_emitter
+tests/docs/test_server_search
+tests/docs/test_optional_config_hooks_are_noops_when_unset
+tests/docs/test_nginx_target
+tests/docs/test_dev_server
+tests/docs/test_csp_analytics
+tests/docs/test_cli
+tests/docs/test_chrome_hooks_noop_when_unset
 
 # `nim js` writes its output next to the compiled .nim file unless -o:
 # is given (e.g. `nim js -r tests/docs/foo.nim` -> tests/docs/foo.js).

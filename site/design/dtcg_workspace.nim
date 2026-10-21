@@ -29,7 +29,8 @@
 import std/strutils
 
 import isonim/editor
-import core/[tokens, docs_tokens]
+import isonim/theming/dtcg
+import core/docs_tokens
 
 # The real isonim-docs components (SSR-string renderers) + their view
 # models. These are the SAME modules the live docs site (`src/main_web.nim`,
@@ -38,7 +39,8 @@ import core/[tokens, docs_tokens]
 # themed by the live `--docs-*` tokens -- rather than mock HTML. Every
 # `*Html` proc used below is a pure string builder that compiles and runs
 # on both the C and JS targets.
-import core/[markdown_vm, navigation_vm, search_vm, theme_vm, config]
+import isonim/content/markdown
+import core/[navigation_vm, search_vm, theme_vm, config]
 import components/[markdown_view, navigation_view, search_view, shell,
                    markdown_page]
 
