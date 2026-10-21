@@ -7,12 +7,27 @@
 # prefix a recipe with this repo's own flake -- never isonim's:
 #   nix develop . -c just --justfile site/Justfile --working-directory site build
 
-test:
+test: test-design
     nim c -r tests/test_site_builds.nim
     nim c -r tests/test_feature_coverage.nim
     nim c -r tests/test_doc_links_resolve.nim
     nim c -r tests/test_doc_examples_compile.nim
     nim c -r tests/test_dev.nim
+
+# The design-system editor (design/) and its tests. Part of `test` so a change
+# to the token layer they consume cannot break the editor unnoticed: the JS
+# bundle build is the `just design` compile check, then each test on the
+# backend(s) its header names (C-only tests touch the filesystem or a socket;
+# JS-only ones need the browser DOM shim or the JS fetch path).
+test-design:
+    nim js --hints:off -o:design/build/design_editor.js design/main.nim
+    nim c -r design/tests/test_dtcg_to_workspace.nim
+    nim js -r design/tests/test_dtcg_to_workspace.nim
+    nim c -r design/tests/test_dtcg_writeback_roundtrip.nim
+    nim c -r design/tests/test_design_bindings_server.nim
+    nim c -r design/tests/test_design_save_server.nim
+    nim js -r design/tests/test_editor_mount_and_preview.nim
+    nim js -r design/tests/test_editor_save_post.nim
 
 build:
     nim c -r --hints:off -o:build/build src/build.nim

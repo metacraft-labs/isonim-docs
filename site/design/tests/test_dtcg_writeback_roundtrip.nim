@@ -402,7 +402,7 @@ suite "docs-tokens write-back (M4)":
   test "editor edit path: a SourceEditPlan persists to the docs token file":
     let path = mkDocsCopy()
     defer: removeDir(path.parentDir)
-    let tokens = dtcgFoundationTokens(isonimDocsTokenLayer(), designSystemTokens())
+    let tokens = dtcgFoundationTokens(metacraftDocsTokenLayer(), designSystemTokens())
     # A plan as `editFoundationToken` emits for --docs-accent (a literal var).
     let plan = SourceEditPlan(
       property: "--docs-accent", tokenName: "--docs-accent",

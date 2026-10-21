@@ -6,3 +6,5 @@ tests/build_*
 tests/test_dtcg_to_workspace
 tests/test_dtcg_writeback_roundtrip
 tests/test_editor_mount_and_preview
+tests/test_design_bindings_server
+tests/test_design_save_server

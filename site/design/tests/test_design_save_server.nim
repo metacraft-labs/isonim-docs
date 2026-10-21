@@ -41,7 +41,7 @@ import isonim/core/signals
 import isonim/editor
 import ../dtcg_workspace           # metacraftEditorWorkspace, docsWorkspaceEditAdapter, docsSaveEndpoint
 import ../dtcg_writeback          # applyDocsTokenEdit, DtcgWriteError
-import ../../src/theme_tokens      # docsDesignSystemPath, designSystemTokens, isonimDocsTokenLayer
+import ../../src/theme_tokens      # docsDesignSystemPath, designSystemTokens, metacraftDocsTokenLayer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -171,7 +171,7 @@ suite "M4b: dev-server save endpoint patches the docs token file":
 suite "M4b: the editor Save button drives the broker into persist":
 
   test "editFoundationToken + eckSave routes the edit through persist":
-    let layer = isonimDocsTokenLayer()
+    let layer = metacraftDocsTokenLayer()
     let ts = designSystemTokens()
 
     # Capture what the broker hands the project persist closure.
@@ -209,7 +209,7 @@ suite "M4b: the editor Save button drives the broker into persist":
     check captured[0].value == "#123456"
 
   test "a rejected persist fails the save transaction (surfaced to the editor)":
-    let layer = isonimDocsTokenLayer()
+    let layer = metacraftDocsTokenLayer()
     let ts = designSystemTokens()
     let persist: DocsFoundationPersist =
       proc(varName, side, value: string): bool = false   # server rejected it
@@ -226,7 +226,7 @@ suite "M4b: the editor Save button drives the broker into persist":
     # Without `foundationSave` the workspace is byte-identical to M1--M4: no
     # edit adapter, source read-only, so the Save button is inert. This is the
     # gap M4b closes.
-    let ws = metacraftEditorWorkspace(isonimDocsTokenLayer(), designSystemTokens())
+    let ws = metacraftEditorWorkspace(metacraftDocsTokenLayer(), designSystemTokens())
     check ws.editAdapter.isNil
     check not ws.permissions.writeSource
     let vm = createEditorVM(ws)
@@ -261,7 +261,7 @@ suite "M4b: clicking Save persists to disk (full headless loop)":
           false
 
     var vm: EditorVM
-    let ws = metacraftEditorWorkspace(isonimDocsTokenLayer(), designSystemTokens(),
+    let ws = metacraftEditorWorkspace(metacraftDocsTokenLayer(), designSystemTokens(),
       foundationSave = persist)
     vm = createEditorVM(ws)
     check vm.sourceAdapterReady.val
@@ -308,7 +308,7 @@ suite "M4b: clicking Save persists to disk (full headless loop)":
           false
 
     var vm: EditorVM
-    let ws = metacraftEditorWorkspace(isonimDocsTokenLayer(), designSystemTokens(),
+    let ws = metacraftEditorWorkspace(metacraftDocsTokenLayer(), designSystemTokens(),
       foundationSave = persist)
     vm = createEditorVM(ws)
     check vm.editFoundationToken("--docs-accent", "#123456").status == pesAccepted

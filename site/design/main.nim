@@ -3,8 +3,9 @@
 ## Mirrors `isonim/src/isonim/editor/main.nim` (the editor package's own
 ## reference mount harness), but instead of the wanderlust travel demo it
 ## constructs the *Metacraft docs* workspace: the real `--docs-*` token
-## layer (`site/src/theme_tokens.isonimDocsTokenLayer`) resolved against the
-## canonical `codetracer-design-system` DTCG set, adapted into an
+## layer (`metacraft_docs_theme.metacraftDocsTokenLayer` from
+## `codetracer-design-system/nim`, re-exported by `site/src/theme_tokens`)
+## resolved against the canonical `codetracer-design-system` DTCG set, adapted into an
 ## `EditorWorkspace` by `dtcg_workspace`, then handed to `mountEditor`.
 ##
 ## The DTCG JSON is embedded at COMPILE TIME via `staticRead` because the JS
@@ -29,7 +30,7 @@ const
 
 proc main() =
   let ts = loadTokensFromStrings([brandJson, aliasJson, mappedJson])
-  let layer = isonimDocsTokenLayer()
+  let layer = metacraftDocsTokenLayer()
 
   var editor: EditorVM
   var ws = metacraftEditorWorkspace(layer, ts,

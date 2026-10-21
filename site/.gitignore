@@ -11,6 +11,7 @@ tests/test_site_builds
 tests/test_doc_examples_compile
 tests/test_feature_coverage
 tests/test_doc_links_resolve
+tests/test_dev
 src/build
 src/ssr
 

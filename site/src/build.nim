@@ -6,9 +6,11 @@
 ## route table from the real `content/` dir, end to end (dogfooding the
 ## framework's auto-discovery routing on its own docs).
 ##
-## The reused Metacraft theme's token layer
-## (`theme_tokens.isonimDocsTokenLayer`) is emitted to CSS and PREPENDED
-## onto `assets/style.css` via `buildSite(docsTokensCss = ...)`, and the
+## The shared design system's docs token layer
+## (`metacraft_docs_theme.metacraftDocsTokenLayer`, re-exported by
+## `theme_tokens`) is emitted to CSS by `metacraftDocsTokensCss` and
+## PREPENDED onto the composed stylesheet via
+## `buildDocsSite(docsTokensCss = ...)`, and the
 ## vendored theme binaries (Geist woff2, search glyph) under `static/` are
 ## copied verbatim into `public/assets/` AFTER the hash/purge pass so the
 ## stylesheet's `url(/assets/...)` refs resolve to real files.
