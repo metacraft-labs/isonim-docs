@@ -319,8 +319,15 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
     ## Unconditional (not "only pages that currently show an image") so a
     ## soft (SPA) navigation into an image-carrying route still has it.
     ## Applied BEFORE the plugin `onRender` hooks, so a hook sees the final
-    ## document exactly as it will be served.
-    let html = host.applyOnRender(withImageViewerScript(renderToString(renderFn)))
+    ## document exactly as it will be served. Under `cfg.scriptPolicy =
+    ## spNone` the page carries no executable script, so the viewer is left
+    ## out (`components/shell.docsPageScripts` declares it, and the policy
+    ## drops it there and from the CSP hashes alike).
+    let rendered = renderToString(renderFn)
+    let withScripts =
+      if cfg.scriptPolicy == spNone: rendered
+      else: withImageViewerScript(rendered)
+    let html = host.applyOnRender(withScripts)
     info "docs_route_rendered", path = path, status = status
     result = (status, html)
   except CatchableError as e:

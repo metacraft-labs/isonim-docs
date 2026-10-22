@@ -19,8 +19,11 @@ import ./core/plugin
 import ./core/search_vm
 import ./components/search_view
 import ./components/image_viewer
-import ./core/asset_pipeline
 import ./core/base_path
+import isonim/static/assets
+import isonim/static/exporter
+import isonim/static/sitemap
+import isonim/static/robots
 
 const bundledDefaultStylesheet = staticRead("../assets/style.css")
   ## The framework's own content-agnostic, token-driven stylesheet,
@@ -53,12 +56,6 @@ proc compileClientBundle(outDir, clientEntry: string) =
   doAssert fileExists(appJs) and getFileSize(appJs) > 0,
     "build_site: " & appJs & " (compiled client bundle) must exist and be non-empty"
   info "ssg_client_bundle_compiled", output = appJs, bytes = getFileSize(appJs)
-
-proc outputPathFor(outDir, routePath: string): string =
-  ## Clean-URL mapping: "/" -> index.html, "/guide/dsl" -> guide/dsl/index.html.
-  let trimmed = routePath.strip(chars = {'/'})
-  if trimmed.len == 0: outDir / "index.html"
-  else: outDir / trimmed / "index.html"
 
 proc copyAssetsVerbatim(outDir, assetsDir: string; docsTokensCss = "";
                         basePath = "") =
@@ -127,48 +124,21 @@ proc copyAssetsVerbatim(outDir, assetsDir: string; docsTokensCss = "";
       if cssFile.toLowerAscii.endsWith(".css"):
         writeFile(cssFile, applyBasePathCss(readFile(cssFile), base))
 
-proc hashAndPurgeAssets(outDir: string, usedClasses: HashSet[string]):
+proc hashAndPurgeStylesheet(outDir: string, usedClasses: HashSet[string]):
     seq[tuple[fromHref, toHref: string]] =
-  ## M2 corrective deliverable 3: Tailwind-purges `style.css` against
-  ## the classes actually used across every rendered page, then
-  ## content-hashes every file under `outDir/assets` in place (removing
-  ## the unhashed copy) and writes `asset-manifest.json`. Returns the
-  ## `/assets/<name>` -> `/assets/<hashed name>` href rewrites the
-  ## caller must apply to already-rendered HTML.
-  var relPaths: seq[string] = @[]
-  for relPath in walkDirRec(outDir / "assets", relative = true):
-    relPaths.add relPath
-  var manifestEntries: seq[tuple[original, hashed: string]] = @[]
-  result = @[]
-  for relPath in relPaths:
-    let absPath = outDir / "assets" / relPath
-    if not fileExists(absPath): continue
-    var content = readFile(absPath)
-    if relPath == "style.css":
-      content = purgeCss(content, usedClasses)
-    let hashedRel = hashedAssetName(relPath, content)
-    let hashedAbs = outDir / "assets" / hashedRel
-    createDir(hashedAbs.parentDir)
-    writeFile(hashedAbs, content)
-    removeFile(absPath)
-    if relPath == "style.css":
+  ## M2 corrective deliverable 3: purges `style.css` against the classes
+  ## actually used across every rendered page, then content-hashes every
+  ## file under `outDir/assets` in place and writes `asset-manifest.json`
+  ## (`isonim/static/assets.hashAndPurgeAssets`, which visits the files in
+  ## sorted order). Returns the `/assets/<name>` -> `/assets/<hashed name>`
+  ## href rewrites the caller applies to the already-rendered HTML.
+  result = hashAndPurgeAssets(outDir, usedClasses, purgeFiles = ["style.css"])
+  for (fromHref, toHref) in result:
+    if fromHref == "/assets/style.css":
+      let hashedAbs = outDir / toHref.strip(leading = true, trailing = false, chars = {'/'})
       doAssert fileExists(hashedAbs) and getFileSize(hashedAbs) > 0,
         "build_site: " & hashedAbs & " (purged+hashed stylesheet) must " &
         "exist and be non-empty -- stylesheetHref must never dangle"
-    manifestEntries.add ("assets/" & relPath, "assets/" & hashedRel)
-    result.add ("/assets/" & relPath, "/assets/" & hashedRel)
-  writeAssetManifest(outDir / "asset-manifest.json", manifestEntries)
-
-proc xmlEscape(s: string): string =
-  ## Minimal XML text/attribute escaper for the sitemap `<loc>` values.
-  for c in s:
-    case c
-    of '&': result.add "&amp;"
-    of '<': result.add "&lt;"
-    of '>': result.add "&gt;"
-    of '"': result.add "&quot;"
-    of '\'': result.add "&apos;"
-    else: result.add c
 
 proc collectSeoWarnings*(manifest: RouteManifest): seq[string] =
   ## M6 deliverable 1: a page lacking a description (or a title) is a real
@@ -191,23 +161,21 @@ proc writeSitemapAndRobots(outDir: string; manifest: RouteManifest; cfg: DocsCon
   ## as an absolute URL derived from `cfg.baseUrl`) and a sensible default
   ## `robots.txt` (allow all + a `Sitemap:` line) into the output dir. A
   ## consumer-supplied `robots.txt` (copied verbatim from `publicDir`)
-  ## wins: it is never overwritten.
-  var urls = ""
+  ## wins: it is never overwritten. The sitemap lists the routes in the
+  ## manifest's own order (`isonim/static/sitemap.renderSitemap` keeps the
+  ## order it is given); robots.txt is `isonim/static/robots`' default policy.
+  var entries: seq[SitemapEntry] = @[]
   for entry in manifest.entries:
     if entry.pageKind == pkRedirect:
       continue
-    urls.add "  <url><loc>" & xmlEscape(joinSiteUrl(cfg.baseUrl, entry.canonicalPath)) &
-      "</loc></url>\n"
-  let sitemap = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" &
-    "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" &
-    urls & "</urlset>\n"
+    entries.add sitemapEntry(cfg.baseUrl, entry.canonicalPath)
+  let sitemap = renderSitemap(entries)
   writeFile(outDir / "sitemap.xml", sitemap)
   info "ssg_sitemap_written", path = outDir / "sitemap.xml", bytes = sitemap.len
 
   let robotsPath = outDir / "robots.txt"
   if not fileExists(robotsPath):
-    var robots = "User-agent: *\nAllow: /\n"
-    robots.add "Sitemap: " & joinSiteUrl(cfg.baseUrl, "/sitemap.xml") & "\n"
+    let robots = renderRobots(sitemapUrlFor(cfg.baseUrl))
     writeFile(robotsPath, robots)
     info "ssg_robots_written", path = robotsPath, bytes = robots.len
 
@@ -243,11 +211,19 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   ## artifact (CSS, search index, page HTML) is prefixed consistently.
   let base = normalizeBasePath(cfg.basePath)
 
-  removeDir(outDir)
-  createDir(outDir)
-  copyAssetsVerbatim(outDir, assetsDir, docsTokensCss, cfg.basePath)
+  ## Atomic output (`isonim/static/exporter`): the whole site is built in a
+  ## staging directory next to `outDir`, which replaces `outDir` by rename
+  ## only once the build is complete. A build that fails part-way leaves the
+  ## previous `outDir` as it was (and removes the staging directory), so a
+  ## server or dev loop serving `outDir` never sees a half-written site.
+  let staging = beginStaging(outDir)
+  let stage = staging.path
+  var committed = false
+  defer:
+    if not committed: discardStaging(staging)
+  copyAssetsVerbatim(stage, assetsDir, docsTokensCss, cfg.basePath)
   if dirExists(publicDir):
-    copyDir(publicDir, outDir)
+    copyDir(publicDir, stage)
 
   ## M1 (client-JS bundle): compile the consumer's `nim js` mount entry into
   ## `assets/app.js` (hashed below) and make sure every page injects it. When
@@ -256,7 +232,7 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   if clientEntry.len > 0:
     if cfg.appScriptHref.len == 0:
       cfg.appScriptHref = defaultAppScriptUrl
-    compileClientBundle(outDir, clientEntry)
+    compileClientBundle(stage, clientEntry)
 
   ## M6 deliverable 1: surface missing description/title as observable
   ## warnings (logged + optionally returned), before rendering anything.
@@ -268,14 +244,14 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
 
   ## Render every route once, up front, so the purge step below sees
   ## every class used anywhere on the site before any asset is hashed.
-  var pages: seq[tuple[outPath, html: string]] = @[]
+  var pages: seq[tuple[routePath, html: string]] = @[]
   var usedClasses = initHashSet[string]()
   for entry in manifest.entries:
     if entry.pageKind == pkRedirect:
       continue ## alias/redirect entries have no static page of their own
     let routePath = entry.canonicalPath
     let (status, html) = renderRoute(routePath, contentDir, manifest, cfg, host = host)
-    pages.add (outputPathFor(outDir, routePath), html)
+    pages.add (routePath, html)
     usedClasses.incl extractUsedClasses(html)
     info "ssg_page_rendered", route = routePath, status = status, bytes = html.len
 
@@ -294,7 +270,7 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   for cls in imageViewerRuntimeClasses:
     usedClasses.incl cls
 
-  var hrefRewrites = hashAndPurgeAssets(outDir, usedClasses)
+  var hrefRewrites = hashAndPurgeStylesheet(stage, usedClasses)
 
   ## M5 deliverable 2 (deferred search index): emit the real, site-wide
   ## search index as a SEPARATE, content-hashed `search-index.<hash>.json`
@@ -307,26 +283,34 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   let searchIndexJson = applyBasePathSearchIndex(
     searchIndexToJson(buildRealSearchIndex(contentDir, manifest)), base)
   let searchIndexHashedName = "search-index." & contentHash(searchIndexJson) & ".json"
-  writeFile(outDir / searchIndexHashedName, searchIndexJson)
+  writeFile(stage / searchIndexHashedName, searchIndexJson)
   hrefRewrites.add (defaultSearchIndexUrl, "/" & searchIndexHashedName)
   info "ssg_search_index_written", path = outDir / searchIndexHashedName,
     bytes = searchIndexJson.len
 
   ## M6 deliverable 1: sitemap.xml (all routes) + a default robots.txt.
-  writeSitemapAndRobots(outDir, manifest, cfg)
+  writeSitemapAndRobots(stage, manifest, cfg)
 
-  var count = 0
-  for (outPath, html) in pages:
+  var sitePages: seq[SitePage] = @[]
+  for (routePath, html) in pages:
     var finalHtml = html
     for (fromHref, toHref) in hrefRewrites:
       finalHtml = finalHtml.replace(fromHref, toHref)
     ## Base-path prefix LAST, so the placeholder->hashed `href`/`src`/search-index
     ## URLs above are prefixed too (empty base = no-op, byte-identical).
     finalHtml = applyBasePathHtml(finalHtml, base)
-    createDir(outPath.parentDir)
-    writeFile(outPath, finalHtml)
-    inc count
-    info "ssg_page_written", path = outPath, bytes = finalHtml.len
+    # Docs routes have always been directory URLs, even a slug with
+    # a .html suffix. The generic exporter also supports file routes.
+    let directoryRoute = routePath.strip(leading = false, trailing = true, chars = {'/'}) & "/"
+    sitePages.add SitePage(route: directoryRoute, html: finalHtml)
+    info "ssg_page_written", path = outDir / outputRelPath(directoryRoute), bytes = finalHtml.len
+  ## Clean-URL files (`/` -> `index.html`, `/guide/dsl` ->
+  ## `guide/dsl/index.html`), written in route order; two routes that map to
+  ## the same file are an error instead of a silent overwrite.
+  let report = writeSiteTree(stage, sitePages)
+  commitStaging(staging, outDir)
+  committed = true
+  let count = report.pages.len
   info "ssg_complete", pages = count, outDir = outDir
 
   ## M11 deliverable 1: notify every `onBuildComplete` hook now that the

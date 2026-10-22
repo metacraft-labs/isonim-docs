@@ -2,13 +2,19 @@
 ## data derived from `DocsPage`/`RouteEntry`/`DocsConfig`; zero
 ## platform/CSS imports, so it's headless-testable without any renderer.
 
-import std/strutils
 import ./content
 import ./config
 import ./routes
 import ./navigation_vm
 import ./search_vm
 import ./theme_vm
+import isonim/static/head
+
+# The SEO head type and its builders moved to `isonim/static/head`;
+# re-exported so every existing import of this module sees the same type.
+# `DocumentHead` (with the head fields it always had, plus `themeColors`,
+# `ogImage` and `twitterCard`, empty by default) is that module's type.
+export DocumentHead, ThemeColor, formatPageTitle, jsonLdString
 
 type
   ShellViewModel* = object
@@ -27,32 +33,6 @@ type
     prNav
     prMain
     prFooter
-
-  DocumentHead* = object
-    ## Document head builder output: formatted title, resolved
-    ## description, and the stylesheet asset hook. M6 deliverable 1 (SEO)
-    ## adds the derived-once metadata every page's `<head>` emits:
-    ## OpenGraph/Twitter card fields, the absolute canonical URL, and a
-    ## JSON-LD document -- all built from the same `RouteMeta`/`DocsConfig`
-    ## the pre-M6 fields already came from, so the SSR string path
-    ## (`components/shell.renderDocumentHeadHtml`) and the tree/mock path
-    ## (`renderDocumentHead`) stay in lock-step.
-    title*: string
-    description*: string
-    stylesheetHref*: string
-    siteName*: string    ## `og:site_name` / JSON-LD publisher -- the site title.
-    canonicalUrl*: string ## `<link rel=canonical>` + `og:url`; absolute when
-                          ## `DocsConfig.baseUrl` is set, else root-relative.
-    ogType*: string      ## `og:type` -- "article" for a docs page.
-    jsonLd*: string      ## Serialized JSON-LD (`application/ld+json`) document.
-    alternates*: seq[tuple[hreflang, href: string]]
-                         ## M10 deliverable 3 (i18n): the `hreflang` alternate
-                         ## links this page emits, one per locale plus an
-                         ## `x-default`, built by `i18n_vm.buildHreflangAlternates`
-                         ## and passed in by the SSR entry. Empty for an
-                         ## un-internationalized page, so its `<head>` is
-                         ## byte-for-byte unchanged. A plain tuple `seq` so this
-                         ## generic SEO head type never depends on `i18n_vm`.
 
   SiteShellViewModel* = object
     ## The M1 rendering-shell VM: a route's document head plus the
@@ -145,47 +125,11 @@ proc regionId*(region: PageRegion): string =
   of prMain: regionMainId
   of prFooter: regionFooterId
 
-proc formatPageTitle*(pageTitle, siteTitle: string): string =
-  ## "Page Title — Site Title", or just the site title when there's no
-  ## page-specific title (e.g. an index page whose meta carries none).
-  if pageTitle.len == 0: siteTitle
-  else: pageTitle & " — " & siteTitle
-
-proc jsonLdString*(s: string): string =
-  ## Minimal, dependency-free JSON string encoder for the JSON-LD builder.
-  ## Pure per-char work (no `std/json`), so it is identical on the C and
-  ## JS targets. `<` is encoded as `<` so a value containing
-  ## `</script>` can never break out of the `<script type=ld+json>` block
-  ## it is embedded in.
-  result = "\""
-  for c in s:
-    case c
-    of '"': result.add "\\\""
-    of '\\': result.add "\\\\"
-    of '\n': result.add "\\n"
-    of '\r': result.add "\\r"
-    of '\t': result.add "\\t"
-    of '<': result.add "\\u003c"
-    else: result.add c
-  result.add "\""
-
 proc buildJsonLd*(head: DocumentHead): string =
   ## The JSON-LD (`schema.org`) document a docs page emits: a `TechArticle`
   ## with its headline/description and (when configured) its absolute URL,
-  ## plus the site as its publisher. Built by hand from `jsonLdString` so
-  ## it needs no `std/json` and stays dual-target.
-  var parts = @[
-    "\"@context\":" & jsonLdString("https://schema.org"),
-    "\"@type\":" & jsonLdString("TechArticle"),
-    "\"headline\":" & jsonLdString(head.title),
-    "\"description\":" & jsonLdString(head.description),
-  ]
-  if head.canonicalUrl.len > 0:
-    parts.add "\"url\":" & jsonLdString(head.canonicalUrl)
-  if head.siteName.len > 0:
-    parts.add "\"publisher\":{\"@type\":\"Organization\",\"name\":" &
-      jsonLdString(head.siteName) & "}"
-  "{" & parts.join(",") & "}"
+  ## plus the site as its publisher (`isonim/static/head.articleJsonLd`).
+  articleJsonLd(head, "TechArticle")
 
 proc buildDocumentHead*(meta: RouteMeta; cfg: DocsConfig;
                          routePath: string = "";

@@ -13,7 +13,6 @@
 ## different macro backends. M1 replaces both with the real
 ## routing/rendering core; a hand-rolled pair is enough for one route.
 
-import std/strutils
 import isonim/core/computation
 import isonim/dsl/ui
 import isonim/ssr/escape
@@ -22,7 +21,9 @@ import ../core/shell_vm
 import ../core/search_vm
 import ../core/theme_vm
 import ../core/config
-import ../core/csp
+import isonim/static/csp
+import isonim/static/head
+import isonim/static/scripts
 import ../core/analytics
 import ./navigation_view
 import ./search_view
@@ -36,6 +37,11 @@ import ./image_viewer
 # rather than making every call site (tests, main_web.nim) import
 # isonim's reactive core module just to satisfy the macro's internals.
 export computation
+
+# The SEO head renderers moved to `isonim/static/head`; re-exported so every
+# existing caller of `shell.renderDocumentHead` / `renderDocumentHeadHtml`
+# keeps compiling.
+export renderDocumentHead, renderDocumentHeadHtml
 
 const
   shellClass* = "docs-shell"
@@ -241,147 +247,37 @@ proc renderSkipLinkHtml*(): string =
   ## SSR string-mode rendering -- same shape as `renderSkipLink`.
   "<a class=\"" & skipLinkClass & "\" href=\"#" & regionId(prMain) & "\">" & skipLinkText & "</a>"
 
-proc addMetaName[R, E](r: R; parent: E; name, content: string) =
-  let m = r.createElement("meta")
-  r.setAttribute(m, "name", name)
-  r.setAttribute(m, "content", content)
-  r.appendChild(parent, m)
-
-proc addMetaProperty[R, E](r: R; parent: E; property, content: string) =
-  let m = r.createElement("meta")
-  r.setAttribute(m, "property", property)
-  r.setAttribute(m, "content", content)
-  r.appendChild(parent, m)
-
-proc renderDocumentHead*[R, E](r: R; head: DocumentHead): E =
-  ## Document head builder + asset injection: the `<head>` element tree a
-  ## Layer 4 shell composes around the site frame when assembling a full
-  ## HTML document -- title, description metadata, the stylesheet asset
-  ## hook, and (M6 deliverable 1) the SEO metadata: a canonical link,
-  ## OpenGraph + Twitter card tags, and a JSON-LD document. Built directly
-  ## against the generic renderer backend API (like `renderSiteFrame`)
-  ## rather than the static `ui` DSL, so it can emit `property=`/`meta`
-  ## attribute sets the DSL's fixed attribute vocabulary doesn't cover,
-  ## and stays byte-for-byte in lock-step with `renderDocumentHeadHtml`.
-  let headEl = r.createElement("head")
-
-  # `<meta charset="utf-8">` is the FIRST child of <head> (framework
-  # invariant, in lock-step with `renderDocumentHeadHtml`) so the browser
-  # decodes the document as UTF-8 even when the server sends no charset.
-  let charsetMeta = r.createElement("meta")
-  r.setAttribute(charsetMeta, "charset", "utf-8")
-  r.appendChild(headEl, charsetMeta)
-
-  let titleEl = r.createElement("title")
-  r.appendChild(titleEl, r.createTextNode(head.title))
-  r.appendChild(headEl, titleEl)
-
-  # Description + stylesheet stay the FIRST meta/link so existing
-  # first-match assertions keep resolving to them.
-  addMetaName[R, E](r, headEl, "description", head.description)
-
-  let styleLink = r.createElement("link")
-  r.setAttribute(styleLink, "rel", "stylesheet")
-  r.setAttribute(styleLink, "href", head.stylesheetHref)
-  r.appendChild(headEl, styleLink)
-
-  let canonicalLink = r.createElement("link")
-  r.setAttribute(canonicalLink, "rel", "canonical")
-  r.setAttribute(canonicalLink, "href", head.canonicalUrl)
-  r.appendChild(headEl, canonicalLink)
-
-  # M10 deliverable 3 (i18n): one hreflang alternate <link> per locale (plus
-  # x-default); empty for an un-internationalized page.
-  for alt in head.alternates:
-    let altLink = r.createElement("link")
-    r.setAttribute(altLink, "rel", "alternate")
-    r.setAttribute(altLink, "hreflang", alt.hreflang)
-    r.setAttribute(altLink, "href", alt.href)
-    r.appendChild(headEl, altLink)
-
-  addMetaProperty[R, E](r, headEl, "og:title", head.title)
-  addMetaProperty[R, E](r, headEl, "og:description", head.description)
-  addMetaProperty[R, E](r, headEl, "og:type", head.ogType)
-  addMetaProperty[R, E](r, headEl, "og:url", head.canonicalUrl)
-  addMetaProperty[R, E](r, headEl, "og:site_name", head.siteName)
-
-  addMetaName[R, E](r, headEl, "twitter:card", "summary")
-  addMetaName[R, E](r, headEl, "twitter:title", head.title)
-  addMetaName[R, E](r, headEl, "twitter:description", head.description)
-
-  let ldScript = r.createElement("script")
-  r.setAttribute(ldScript, "type", "application/ld+json")
-  r.appendChild(ldScript, r.createTextNode(head.jsonLd))
-  r.appendChild(headEl, ldScript)
-
-  headEl
-
-proc renderDocumentHeadHtml*(head: DocumentHead; headTop = ""): string =
-  ## SSR string-mode rendering -- same shape/order as `renderDocumentHead`.
-  ## The JSON-LD payload is emitted verbatim (already `<`-escaped by
-  ## `shell_vm.jsonLdString`, so it cannot break out of the `<script>`).
-  ## M10 deliverable 3: the `hreflang` alternate links (i18n) follow the
-  ## canonical link -- `head.alternates` is empty for an un-internationalized
-  ## page, so its head is byte-for-byte unchanged. M12 deliverable 3:
-  ## `headTop` (the CSP meta + inline scripts from `renderHeadSecurityTop`, or
-  ## the theme no-flash bootstrap on the default layout) is injected right
-  ## after the charset `<meta>`; it defaults to "" so every caller that
-  ## doesn't opt into head-top content keeps the rest of its head intact.
-  ##
-  ## `<meta charset="utf-8">` is ALWAYS the very first child of `<head>` (a
-  ## framework invariant): the HTML spec requires the encoding declaration in
-  ## the first 1024 bytes, and without it a server that doesn't force a
-  ## charset makes the browser mis-decode every non-ASCII byte (em-dash,
-  ## ellipsis, emoji -> mojibake). It precedes `headTop` so the declaration
-  ## still comes first even when a CSP meta / bootstrap script is injected.
-  var alternatesHtml = ""
-  for alt in head.alternates:
-    alternatesHtml.add "<link rel=\"alternate\" hreflang=\"" &
-      escapeAttr(alt.hreflang) & "\" href=\"" & escapeAttr(alt.href) & "\" />"
-  "<head>" &
-    "<meta charset=\"utf-8\" />" & headTop &
-    "<title>" & escapeHtml(head.title) & "</title>" &
-    "<meta name=\"description\" content=\"" & escapeAttr(head.description) & "\" />" &
-    "<link rel=\"stylesheet\" href=\"" & escapeAttr(head.stylesheetHref) & "\" />" &
-    "<link rel=\"canonical\" href=\"" & escapeAttr(head.canonicalUrl) & "\" />" &
-    alternatesHtml &
-    "<meta property=\"og:title\" content=\"" & escapeAttr(head.title) & "\" />" &
-    "<meta property=\"og:description\" content=\"" & escapeAttr(head.description) & "\" />" &
-    "<meta property=\"og:type\" content=\"" & escapeAttr(head.ogType) & "\" />" &
-    "<meta property=\"og:url\" content=\"" & escapeAttr(head.canonicalUrl) & "\" />" &
-    "<meta property=\"og:site_name\" content=\"" & escapeAttr(head.siteName) & "\" />" &
-    "<meta name=\"twitter:card\" content=\"summary\" />" &
-    "<meta name=\"twitter:title\" content=\"" & escapeAttr(head.title) & "\" />" &
-    "<meta name=\"twitter:description\" content=\"" & escapeAttr(head.description) & "\" />" &
-    "<script type=\"application/ld+json\">" & head.jsonLd & "</script>" &
-  "</head>"
-
-proc pageInlineScriptBodies(cfg: DocsConfig): seq[string] =
-  ## The exact bodies of the executable inline scripts the framework emits
-  ## for a page, in emission order: the theme no-flash bootstrap (always,
-  ## in `<head>`), then the analytics beacon (only when configured, also in
-  ## `<head>`), then the image viewer (always, as the LAST child of
-  ## `<body>` -- see `components/image_viewer`). These are the strings the
-  ## CSP manager hashes into `script-src`, so a strict policy whitelists
-  ## precisely the scripts the page ships and nothing else. (The JSON-LD /
-  ## search-index blocks are `type=application/(ld+)json` data islands, not
-  ## executable, so CSP `script-src` never applies to them.)
-  result = @[themeBootstrapScriptBody()]
+proc docsPageScripts*(cfg: DocsConfig): seq[PageScript] =
+  ## Every executable script an isonim-docs page declares, in emission
+  ## order: the theme no-flash bootstrap (always, early in `<head>`), the
+  ## analytics beacon (only when configured, also early in `<head>`), the
+  ## deferred app bundle (only when `appScriptHref` is set, just before
+  ## `</head>`), and the image viewer (always, as the last child of
+  ## `<body>` -- see `components/image_viewer`). `cfg.scriptPolicy` decides
+  ## which of them a page carries (`isonim/static/scripts`): all of them
+  ## under the default `spDeclared`, only the analytics snippet under
+  ## `spNone`. (The JSON-LD and search-index blocks are
+  ## `type=application/(ld+)json` data blocks, not executable, so neither
+  ## the policy nor CSP `script-src` applies to them.)
+  result = @[inlineScript(themeBootstrapScriptBody(), id = themeBootstrapScriptId,
+                          slot = ssHeadTop)]
   let analyticsBody = analyticsScriptBody(cfg.analytics)
-  if analyticsBody.len > 0: result.add analyticsBody
-  result.add imageViewerScriptBody()
+  if analyticsBody.len > 0:
+    result.add inlineScript(analyticsBody, id = analyticsScriptId, slot = ssHeadTop,
+                            role = srAnalytics)
+  if cfg.appScriptHref.len > 0:
+    result.add externalScript(cfg.appScriptHref, slot = ssHeadEnd)
+  result.add inlineScript(imageViewerScriptBody(), id = imageViewerScriptId,
+                          slot = ssBodyEnd)
 
 proc renderHeadSecurityTop*(cfg: DocsConfig): string =
-  ## The M12-deliverable-3 secure head prelude: the CSP `<meta>` (first, so
-  ## it governs everything after it), then the framework's own inline
-  ## scripts in a fixed order -- the theme no-flash bootstrap (always) and
-  ## the analytics beacon (only when configured). The SAME script bodies are
-  ## hashed into the CSP's `script-src`, so a strict policy whitelists
-  ## exactly the scripts the page emits. Used only on the secure layout
-  ## (`renderSecureDocumentHeadHtml`) -- when a consumer has turned CSP or
-  ## analytics on.
-  renderCspMetaHtml(cfg.csp, pageInlineScriptBodies(cfg)) &
-    renderThemeBootstrapHtml() & renderAnalyticsHtml(cfg.analytics)
+  ## The secure head prelude (M12 deliverable 3): the CSP `<meta>` (first,
+  ## so it governs everything after it), then the framework's own early
+  ## inline scripts in a fixed order -- the theme no-flash bootstrap and the
+  ## analytics beacon (only when configured), as `cfg.scriptPolicy` keeps
+  ## them. The same script bodies are hashed into the CSP's `script-src`.
+  let kept = applyScriptPolicy(cfg.scriptPolicy, docsPageScripts(cfg))
+  renderCspMetaHtml(cfg.csp, inlineScriptBodies(kept)) & renderScriptsHtml(kept, ssHeadTop)
 
 proc renderAppScriptHtml*(cfg: DocsConfig): string =
   ## M1 (client-JS bundle): the single `<script src="..." defer></script>` the
@@ -394,30 +290,20 @@ proc renderAppScriptHtml*(cfg: DocsConfig): string =
   ## pre-M1 head). A same-origin `/assets/...` src is allowed by even a strict
   ## `script-src 'self'` CSP, so no per-page hash is needed.
   if cfg.appScriptHref.len == 0: return ""
-  "<script src=\"" & escapeAttr(cfg.appScriptHref) & "\" defer></script>"
+  renderScriptHtml(externalScript(cfg.appScriptHref, slot = ssHeadEnd))
 
 proc renderSecureDocumentHeadHtml*(head: DocumentHead; cfg: DocsConfig): string =
   ## The full head region (everything between `<html...>` and `<body>`),
-  ## laid out per the security config. The theme no-flash bootstrap `<script>`
-  ## always lives INSIDE `<head>` (a valid document has no element between
-  ## `<html>` and `<head>`): on the framework default it is the head's
-  ## `headTop`, right after the charset `<meta>` and before `<title>`; when a
-  ## consumer enables CSP and/or analytics it is preceded by the CSP `<meta>`
-  ## (so the policy governs the scripts whose hashes it carries) and followed
-  ## by the analytics beacon -- all still inside `<head>` via
-  ## `renderHeadSecurityTop`. Either way `<meta charset="utf-8">` stays the
-  ## first child of `<head>`.
-  let analyticsHtml = renderAnalyticsHtml(cfg.analytics)
-  let headHtml =
-    if not cfg.csp.enabled and analyticsHtml.len == 0:
-      renderDocumentHeadHtml(head, renderThemeBootstrapHtml())
-    else:
-      renderDocumentHeadHtml(head, renderHeadSecurityTop(cfg))
-  ## M1 (client-JS bundle): splice the deferred app `<script>` in just before
-  ## `</head>` (there is exactly one). Empty `appScriptHref` -> unchanged head.
-  let appScript = renderAppScriptHtml(cfg)
-  if appScript.len == 0: headHtml
-  else: headHtml.replace("</head>", appScript & "</head>")
+  ## laid out per the security config and the script policy
+  ## (`isonim/static/head.renderPageHeadHtml`): `<meta charset="utf-8">`
+  ## first; then the CSP `<meta>` when a consumer enables CSP (so the policy
+  ## governs the scripts whose hashes it carries); then the theme no-flash
+  ## bootstrap and the analytics beacon (when configured), before `<title>`;
+  ## and the deferred app `<script>` (when `appScriptHref` is set) just
+  ## before `</head>`. Under `cfg.scriptPolicy = spNone` only the analytics
+  ## beacon (if configured) remains, and the head's one other `<script>` is
+  ## the JSON-LD data block.
+  renderPageHeadHtml(head, docsPageScripts(cfg), cfg.scriptPolicy, cfg.csp)
 
 proc renderSiteFrame*[R, E](r: R; vm: SiteShellViewModel): E =
   ## The rendering shell: header/nav/main/footer regions carrying stable

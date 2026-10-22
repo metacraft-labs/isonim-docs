@@ -67,6 +67,8 @@ docs-test-c:
     nim c -r tests/docs/test_nginx_target.nim
     nim c -r tests/docs/test_server_search.nim
     nim c -r tests/docs/test_csp_analytics.nim
+    nim c -r tests/docs/test_script_policy.nim
+    nim c -r --out:build/tests/test_static_route_compat --nimcache:build/nimcache/test_static_route_compat tests/docs/test_static_route_compat.nim
     nim c -r tests/docs/test_optional_config_hooks_are_noops_when_unset.nim
     nim c -r tests/docs/test_chrome_hooks_noop_when_unset.nim
     nim c -r tests/tokens/test_token_css_emitter.nim
