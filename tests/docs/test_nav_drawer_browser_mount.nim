@@ -13,17 +13,12 @@
 ## toggle button.
 ##
 ## `nim js -r` runs under Node.js, which has no DOM, no `window`. This
-## shim is the `document`-only subset of `test_soft_nav_browser_mount.
-## nim`'s own DOM shim (`ElementNode`/`TextNode`/`DocumentFragment`/
-## `doc`) -- no `window`/`history`/`location` needed here, since none of
-## `wireNavDrawer`'s own DOM touches go through `window` at all, and
-## every OTHER piece of chrome `hydrateRouteApp` wires unconditionally
-## (soft-nav, theme toggle, prefetch) already guards its own `window`/
-## `localStorage`/`matchMedia`/`IntersectionObserver` access with
-## `typeof X !== 'undefined'` checks, so it silently no-ops without one
-## -- see `isonim-docs-nim-js-gotchas` project memory. Extended with a
-## real `ElementNode.prototype.focus`/`document.activeElement` pair
-## (absent from the base shim -- nothing before this needed live focus
+## shim supplies the document and window used by the browser runtime,
+## following test_soft_nav_browser_mount.nim. A real browser is unnecessary
+## for these event/focus assertions; CSS breakpoint layout is tested elsewhere.
+## The window must exist even for drawer-only tests because browser clock
+## initialization resolves its timer functions from window. Extended with a
+## real ElementNode.prototype.focus/document.activeElement pair (live focus
 ## tracking), the one thing the focus-trap assertions below need that
 ## the base shim doesn't already provide.
 
@@ -31,7 +26,7 @@ when not defined(js):
   {.error: "test_nav_drawer_browser_mount must be compiled with the JS backend: nim js -r tests/docs/test_nav_drawer_browser_mount.nim".}
 
 {.emit: """
-// ---- Minimal document-only DOM shim for Node.js (same idiom as isonim/tests/test_web.nim) ----
+// ---- Minimal DOM/window shim for Node.js (same idiom as isonim/tests/test_web.nim) ----
 (function() {
   if (typeof document !== 'undefined') return;
 
@@ -312,10 +307,65 @@ when not defined(js):
     documentElement: docElement
   };
 
+  // ---- window/location/history shim for soft-nav (M4 corrective deliverable 2) ----
+  var windowEventListeners = {};
+  var historyStack = ['/'];
+  var historyIndex = 0;
+
+  function dispatchPopState() {
+    var handlers = (windowEventListeners['popstate'] || []).slice();
+    for (var i = 0; i < handlers.length; i++) { handlers[i]({type: 'popstate'}); }
+  }
+
+  var win = {
+    document: doc,
+    location: { pathname: '/' },
+    scrollX: 0,
+    scrollY: 0,
+    scrollTo: function(x, y) { win.scrollX = x; win.scrollY = y; },
+    history: {
+      pushState: function(state, title, url) {
+        historyStack = historyStack.slice(0, historyIndex + 1);
+        historyStack.push(url);
+        historyIndex = historyStack.length - 1;
+        win.location.pathname = url;
+      },
+      replaceState: function(state, title, url) {
+        historyStack[historyIndex] = url;
+        win.location.pathname = url;
+      },
+      back: function() {
+        if (historyIndex > 0) {
+          historyIndex -= 1;
+          win.location.pathname = historyStack[historyIndex];
+          dispatchPopState();
+        }
+      },
+      forward: function() {
+        if (historyIndex < historyStack.length - 1) {
+          historyIndex += 1;
+          win.location.pathname = historyStack[historyIndex];
+          dispatchPopState();
+        }
+      }
+    },
+    addEventListener: function(type, handler) {
+      if (!windowEventListeners[type]) windowEventListeners[type] = [];
+      windowEventListeners[type].push(handler);
+    },
+    removeEventListener: function(type, handler) {
+      if (!windowEventListeners[type]) return;
+      var idx = windowEventListeners[type].indexOf(handler);
+      if (idx >= 0) windowEventListeners[type].splice(idx, 1);
+    }
+  };
+
   if (typeof globalThis !== 'undefined') {
     globalThis.document = doc;
+    globalThis.window = win;
   } else if (typeof global !== 'undefined') {
     global.document = doc;
+    global.window = win;
   }
 })();
 """.}
