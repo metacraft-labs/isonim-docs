@@ -4,7 +4,8 @@ ul
   li t(Run )c(acme self-update)
   li t(Deploy as usual)
 code[] "$ acme deploy\x0Adone in 41s"
-p t(> Quoted feedback.)
+quote
+  p t(Quoted feedback.)
 p t(---)
 table A|B
   tr t(1) | t(2)

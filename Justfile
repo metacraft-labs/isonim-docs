@@ -16,6 +16,7 @@ docs-test-c:
     nim c -r tests/docs/test_routes_logging.nim
     nim c -r tests/docs/test_content_vm.nim
     nim c -r tests/docs/test_markdown_mock.nim
+    nim c -r --out:build/test_prose --nimcache:build/nimcache/test_prose tests/docs/test_prose.nim
     nim c -r tests/docs/test_markdown_tabs.nim
     nim c -r tests/docs/test_content_components.nim
     nim c -r tests/docs/test_syntax_highlight.nim
@@ -95,6 +96,7 @@ docs-test-js: tailwind-bootstrap
     nim js -r tests/docs/test_manifest_from_content.nim
     nim js -r tests/docs/test_content_vm.nim
     nim js -r tests/docs/test_markdown_mock.nim
+    nim js -r --out:build/test_prose.js --nimcache:build/nimcache/test_prose_js tests/docs/test_prose.nim
     nim js -r tests/docs/test_markdown_tabs.nim
     nim js -r tests/docs/test_content_components.nim
     nim js -r tests/docs/test_syntax_highlight.nim

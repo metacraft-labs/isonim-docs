@@ -25,8 +25,11 @@ proc outlineSpans(spans: seq[InlineSpan]): string =
     case s.kind
     of ikText: result.add "t(" & s.text & ")"
     of ikCode: result.add "c(" & s.text & ")"
-    of ikLink: result.add "a(" & s.text & "|" & s.href & "|" & $s.isRelative & ")"
+    of ikLink: result.add "a(" & s.text & "|" & s.href & "|" & $s.isRelative &
+      (if s.title.len > 0: "|title=" & s.title else: "") & ")"
     of ikImage: result.add "img(" & s.text & "|" & s.href & "|" & $s.isRelative & ")"
+    of ikStrike: result.add "strike(" & outlineSpans(s.children) & ")"
+    of ikFootnoteRef: result.add "note(" & s.text & ")"
     of ikSymRef: result.add "sym(" & s.text & "|" & s.href & ")"
 
 proc admonitionTone(k: AdmonitionKind): string =
@@ -80,6 +83,12 @@ proc outlineBlock(b: Block; indent: string): string =
   of bkFaq: result = indent & "refused faq " & $b.faqItems.len & "\n"
   of bkVideo: result = indent & "refused video " & b.videoId & "\n"
   of bkForm: result = indent & "refused form " & $b.formFields.len & "\n"
+  of bkBlockquote:
+    result = indent & "quote\n"
+    for child in b.quoteBlocks: result.add outlineBlock(child, indent & "  ")
+  of bkFigure: result = indent & "figure " & outlineSpans(@[b.figureImage]) & " " & outlineSpans(b.caption) & "\n"
+  of bkFootnotes: result = indent & "notes " & $b.footnotes.len & "\n"
+  of bkExcerptBreak: result = indent & "excerpt-break\n"
   of bkComponent: result = indent & "refused component <" & b.componentName & ">\n"
 
 proc outline*(src: string): string =

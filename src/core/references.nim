@@ -95,62 +95,21 @@ proc isPageHref(routePart: string): bool =
   '.' notin lastSeg
 
 proc linkSpans(blocks: seq[Block]): seq[InlineSpan] =
-  ## Every `ikLink` inline span reachable from a page's parsed block
-  ## list -- paragraphs, list items, and admonition body paragraphs are
-  ## the only block kinds `markdown_vm` gives inline spans to directly;
-  ## `bkTabs` panels recurse (each panel's own `blocks` is a full nested
-  ## block list, so a link inside a tab panel is just as reachable as one
-  ## at the top level). `ikImage` spans are asset references, not page
-  ## links, so they're never collected here.
-  for blk in blocks:
-    case blk.kind
-    of bkParagraph:
-      for s in blk.spans:
-        if s.kind == ikLink: result.add s
-    of bkList:
-      for item in blk.items:
-        for s in item:
-          if s.kind == ikLink: result.add s
-    of bkAdmonition:
-      for para in blk.bodyParagraphs:
-        for s in para:
-          if s.kind == ikLink: result.add s
-    of bkTabs:
-      for panel in blk.tabs:
-        result.add linkSpans(panel.blocks)
-    of bkHeading, bkCodeFence, bkTable, bkComponent,
-       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo, bkForm:
-      ## M2 content components carry their hrefs as plain-string card/button
-      ## targets rather than `ikLink` inline spans, so they're out of scope
-      ## for inline-link reference checking (like `bkComponent`).
-      discard
+  ## The shared traversal includes nested quotes, captions and endnotes.
+  var found: seq[InlineSpan]
+  let collect = proc(span: InlineSpan) =
+    if span.kind == ikLink: found.add span
+  visitInlineSpans(blocks, collect,
+    proc(heading: Block): bool = hasFootnoteReference(heading.headingSpans))
+  found
 
 proc symRefSpans(blocks: seq[Block]): seq[InlineSpan] =
-  ## Every `ikSymRef` inline span (`[[sym:...]]`, M8 deliverable 2)
-  ## reachable from a page's parsed block list -- the same block kinds
-  ## `linkSpans` reaches, recursing into `bkTabs` panels identically.
-  for blk in blocks:
-    case blk.kind
-    of bkParagraph:
-      for s in blk.spans:
-        if s.kind == ikSymRef: result.add s
-    of bkList:
-      for item in blk.items:
-        for s in item:
-          if s.kind == ikSymRef: result.add s
-    of bkAdmonition:
-      for para in blk.bodyParagraphs:
-        for s in para:
-          if s.kind == ikSymRef: result.add s
-    of bkTabs:
-      for panel in blk.tabs:
-        result.add symRefSpans(panel.blocks)
-    of bkHeading, bkCodeFence, bkTable, bkComponent,
-       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo, bkForm:
-      ## M2 content components carry their hrefs as plain-string card/button
-      ## targets rather than `ikLink` inline spans, so they're out of scope
-      ## for inline-link reference checking (like `bkComponent`).
-      discard
+  var found: seq[InlineSpan]
+  let collect = proc(span: InlineSpan) =
+    if span.kind == ikSymRef: found.add span
+  visitInlineSpans(blocks, collect,
+    proc(heading: Block): bool = hasFootnoteReference(heading.headingSpans))
+  found
 
 proc checkPageReferences*(doc: MarkdownDoc; source: ContentSource; ownRoutePath: string;
                            knownRoutes: HashSet[string];

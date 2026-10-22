@@ -16,11 +16,12 @@
 ##    `InlineKind` -- is compiled once against each path
 ##    (`compat/via_reexport.nim`, `compat/via_content.nim`). Both parse
 ##    every fixture to the same outline.
-## 3. **Unchanged results.** That outline equals the one recorded in
+## 3. **Reviewed results.** That outline equals the one recorded in
 ##    `fixtures/email-markdown/<name>.outline`, which was produced by the
 ##    same consumer compiled against isonim-docs' own parser at `465a170`,
 ##    before the move. So the shared parser reads these bodies exactly as
-##    the parser isonim-email pinned did.
+##    the parser isonim-email pinned did, except the explicit prose changes
+##    below.
 ##
 ## The fixtures (`fixtures/email-markdown/*.md`) are isonim-email's
 ## Markdown-body story set (`tests/stories/seed_markdown.nim` in that
@@ -29,6 +30,11 @@
 ## time and are literals here: the long unbreakable word, and the image
 ## path. They are excluded from the rewriting pre-commit hooks so their
 ## bytes stay what is tested.
+##
+## Prose expectations update only maximal (strike, autolink, separate title,
+## quote), rtl (quote) and dark (quote). The other four recorded outlines are
+## byte-identical to the extraction baseline. These are AST expectations;
+## site-build HTML goldens are not regenerated.
 ##
 ## No test doubles: both paths are the real modules.
 
@@ -82,7 +88,7 @@ suite "Markdown AST compatibility (re-export path vs isonim/content)":
     check doc.headingTree[0].children[0].id == "b"
 
   for f in fixtures():
-    test "fixture " & f.name & ": both paths parse to the outline recorded before the move":
+    test "fixture " & f.name & ": both paths parse to the reviewed outline":
       let viaOld = viaReexport.outline(f.src)
       let viaNew = viaContent.outline(f.src)
       check viaOld == viaNew

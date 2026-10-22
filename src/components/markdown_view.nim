@@ -18,6 +18,7 @@ import std/strutils
 import isonim/ssr/escape
 import isonim/content/markdown
 import isonim/content/highlight
+import isonim/content/prose
 import ./component_registry
 import ./error_boundary
 import ./image_viewer
@@ -181,6 +182,7 @@ proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
     of ikLink:
       let linkEl = r.createElement("a")
       r.setAttribute(linkEl, "href", s.href)
+      if s.title.len > 0: r.setAttribute(linkEl, "title", s.title)
       r.appendChild(linkEl, r.createTextNode(s.text))
       r.appendChild(parent, linkEl)
     of ikImage:
@@ -189,7 +191,7 @@ proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
       ## actually being displayed smaller than it is. Chrome images (the
       ## header logo, a `:::cards` icon) deliberately do NOT go through
       ## here -- they are sized by the theme, never downscaled content.
-      appendImageFigure[R, E](r, parent, s.href, s.text)
+      appendImageFigure[R, E](r, parent, s.href, s.text, s.title)
     of ikSymRef:
       ## M8 deliverable 2: a resolved `[[sym:...]]` renders as a link to the
       ## symbol anchor; an unresolved one renders as inline code (and is
@@ -207,6 +209,22 @@ proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
         r.setAttribute(codeEl, "class", symRefUnknownClass)
         r.appendChild(codeEl, r.createTextNode(s.text))
         r.appendChild(parent, codeEl)
+    of ikStrike:
+      let el = r.createElement("del")
+      appendInlineSpans(r, el, s.children)
+      r.appendChild(parent, el)
+    of ikFootnoteRef:
+      if s.footnoteNumber == 0:
+        r.appendChild(parent, r.createTextNode("[^" & s.text & "]"))
+      else:
+        let el = r.createElement("sup")
+        r.setAttribute(el, "id", s.referenceId)
+        let link = r.createElement("a")
+        r.setAttribute(link, "href", s.href)
+        r.setAttribute(link, "role", "doc-noteref")
+        r.appendChild(link, r.createTextNode($s.footnoteNumber))
+        r.appendChild(el, link)
+        r.appendChild(parent, el)
 
 proc renderHeading*[R, E](r: R; blk: Block): E =
   ## Builds the heading into a local (naturally `Element`-typed, not
@@ -219,7 +237,8 @@ proc renderHeading*[R, E](r: R; blk: Block): E =
   let el = r.createElement("h" & $blk.level)
   r.setAttribute(el, "class", headingClass)
   r.setAttribute(el, "id", blk.headingId)
-  r.appendChild(el, r.createTextNode(blk.headingText))
+  if hasFootnoteReference(blk.headingSpans): appendInlineSpans(r, el, blk.headingSpans)
+  else: r.appendChild(el, r.createTextNode(blk.headingText))
   el
 
 proc renderParagraph*[R, E](r: R; blk: Block): E =
@@ -231,8 +250,15 @@ proc renderParagraph*[R, E](r: R; blk: Block): E =
 proc renderList*[R, E](r: R; blk: Block): E =
   let el = r.createElement(if blk.listKind == lkOrdered: "ol" else: "ul")
   r.setAttribute(el, "class", listClass)
-  for item in blk.items:
+  for n, item in blk.items:
     let li = r.createElement("li")
+    if n < blk.tasks.len and blk.tasks[n] != tsNone:
+      let box = r.createElement("input")
+      r.setAttribute(box, "type", "checkbox")
+      r.setAttribute(box, "disabled", "disabled")
+      if blk.tasks[n] == tsChecked: r.setAttribute(box, "checked", "checked")
+      r.appendChild(li, box)
+      r.appendChild(li, r.createTextNode(" "))
     appendInlineSpans(r, li, item)
     r.appendChild(el, li)
   el
@@ -626,6 +652,10 @@ proc renderMarkdownBlock*[R, E](r: R; blk: Block; idPath: string;
   of bkFaq: renderFaq[R, E](r, blk)
   of bkVideo: renderVideo[R, E](r, blk)
   of bkForm: renderForm[R, E](r, blk)
+  of bkBlockquote, bkFigure, bkFootnotes, bkExcerptBreak:
+    renderProseExtension[R, E](r, blk,
+      proc(child: Block; index: int): E = renderMarkdownBlock[R, E](r, child, idPath & "-" & $index, registry),
+      proc(parent: E; spans: seq[InlineSpan]) = appendInlineSpans[R, E](r, parent, spans))
 
 proc renderMarkdownBody*[R, E](r: R; blocks: seq[Block];
                                registry: ComponentRegistry[R, E] = nil): E =
@@ -650,22 +680,25 @@ proc spansHtml*(spans: seq[InlineSpan]): string =
     of ikCode:
       result.add "<code>" & escapeHtml(s.text) & "</code>"
     of ikLink:
-      result.add "<a href=\"" & escapeAttr(s.href) & "\">" & escapeHtml(s.text) & "</a>"
+      result.add "<a href=\"" & escapeAttr(s.href) & "\"" & titleAttribute(s.title) & ">" & escapeHtml(s.text) & "</a>"
     of ikImage:
       ## SSR counterpart to `appendInlineSpans`' `ikImage` branch -- kept in
       ## lock-step by both calling `components/image_viewer` (see there).
-      result.add renderImageFigureHtml(s.href, s.text)
+      result.add renderImageFigureHtml(s.href, s.text, s.title)
     of ikSymRef:
       if s.href.len > 0:
         result.add "<a class=\"" & symRefClass & "\" href=\"" & escapeAttr(s.href) &
           "\"><code>" & escapeHtml(s.text) & "</code></a>"
       else:
         result.add "<code class=\"" & symRefUnknownClass & "\">" & escapeHtml(s.text) & "</code>"
+    of ikStrike: result.add "<del>" & spansHtml(s.children) & "</del>"
+    of ikFootnoteRef: result.add proseSpansHtml(@[s])
 
 proc renderHeadingHtml*(blk: Block): string =
   let tag = "h" & $blk.level
   "<" & tag & " class=\"" & headingClass & "\" id=\"" & escapeAttr(blk.headingId) & "\">" &
-    escapeHtml(blk.headingText) & "</" & tag & ">"
+    (if hasFootnoteReference(blk.headingSpans): spansHtml(blk.headingSpans)
+     else: escapeHtml(blk.headingText)) & "</" & tag & ">"
 
 proc renderParagraphHtml*(blk: Block): string =
   "<p class=\"" & paragraphClass & "\">" & spansHtml(blk.spans) & "</p>"
@@ -673,8 +706,13 @@ proc renderParagraphHtml*(blk: Block): string =
 proc renderListHtml*(blk: Block): string =
   let tag = if blk.listKind == lkOrdered: "ol" else: "ul"
   result = "<" & tag & " class=\"" & listClass & "\">"
-  for item in blk.items:
-    result.add "<li>" & spansHtml(item) & "</li>"
+  for n, item in blk.items:
+    result.add "<li>"
+    if n < blk.tasks.len and blk.tasks[n] != tsNone:
+      result.add "<input type=\"checkbox\" disabled"
+      if blk.tasks[n] == tsChecked: result.add " checked"
+      result.add "> "
+    result.add spansHtml(item) & "</li>"
   result.add "</" & tag & ">"
 
 proc highlightedCodeHtml*(lang, code: string): string =
@@ -901,6 +939,13 @@ proc renderMarkdownBlockHtml*(blk: Block; idPath: string;
   of bkFaq: renderFaqHtml(blk)
   of bkVideo: renderVideoHtml(blk)
   of bkForm: renderFormHtml(blk)
+  of bkBlockquote, bkFigure, bkFootnotes, bkExcerptBreak:
+    var childIndex = 0
+    let renderChildren = proc(children: seq[Block]): string =
+      for child in children:
+        result.add renderMarkdownBlockHtml(child, idPath & "-" & $childIndex, registry)
+        inc childIndex
+    renderProseExtensionHtml(blk, renderChildren, spansHtml)
 
 proc renderMarkdownBodyHtml*(blocks: seq[Block];
                              registry: HtmlComponentRegistry = nil): string =
