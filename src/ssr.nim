@@ -55,7 +55,7 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
                    versions: VersionCatalog = VersionCatalog();
                    locales: LocaleCatalog = LocaleCatalog();
                    translations: TranslationTable = TranslationTable();
-                   host: PluginHost = PluginHost()):
+                   host: PluginHost = PluginHost(); strictRenderErrors: bool = false):
     tuple[status: int, html: string] =
   ## Renders `path` to `(status, html)` against `manifest`: a matched
   ## entry loads its own bound content file (`RouteMeta.contentPath`)
@@ -218,7 +218,7 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
     if entry.pageKind == pkMarkdown:
       let contentEntry = loadContentEntry(effContentDir, entry.meta.contentPath)
       let doc = parseMarkdownDocWithPlugins(host, contentEntry.page.body, contentEntry.source.path,
-                                  makeContentPathResolver(effManifest), resolveSymbol)
+                                  makeContentPathResolver(effManifest), resolveSymbol, firstLine = contentEntry.page.bodyLine)
       let pageTitle = if contentEntry.page.title.len > 0: contentEntry.page.title else: entry.meta.title
       let navPages = buildNavPages(effManifest, loadEntry)
       let navigation = buildNavigationViewModel(navPages, entry.canonicalPath, doc.headingTree,
@@ -283,7 +283,7 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
       ## H2 sections simply renders an empty (0-of-0) rail.
       let contentEntry = loadContentEntry(effContentDir, entry.meta.contentPath)
       let doc = parseMarkdownDocWithPlugins(host, contentEntry.page.body, contentEntry.source.path,
-                                  makeContentPathResolver(effManifest), resolveSymbol)
+                                  makeContentPathResolver(effManifest), resolveSymbol, firstLine = contentEntry.page.bodyLine)
       let pageTitle = if contentEntry.page.title.len > 0: contentEntry.page.title else: entry.meta.title
       var steps: seq[TutorialStep] = @[]
       for h in doc.headingTree:
@@ -331,6 +331,9 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
     info "docs_route_rendered", path = path, status = status
     result = (status, html)
   except CatchableError as e:
+    # Static builders need the original diagnostic and must not publish a
+    # fallback page as successful content. HTTP callers retain the default.
+    if strictRenderErrors: raise
     ## M6 deliverable 2: a body-render failure returns a real HTTP 500
     ## fallback page (with chrome) instead of re-raising.
     error "docs_render_error", path = path, contentPath = entry.meta.contentPath,

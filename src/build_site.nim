@@ -16,6 +16,7 @@ import ./ssr
 import ./core/routes
 import ./core/config
 import ./core/plugin
+import ./core/references
 import ./core/search_vm
 import ./components/search_view
 import ./components/image_viewer
@@ -206,6 +207,12 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
   var cfg = cfg
   applyOnConfig(host, cfg)
 
+  ## Content renderers can activate links/anchors that default parsing leaves
+  ## literal. Validate using the complete explicit host before publication.
+  ## Empty, parser-only and lifecycle-only hosts retain existing build behavior.
+  if host.hasContentRenderers:
+    validateContentGraph(contentDir, manifest, host = host)
+
   ## Base-path prefix for project-subpath hosting (empty = root hosting, output
   ## byte-identical to before). Resolved once, after `onConfig`, so every
   ## artifact (CSS, search index, page HTML) is prefixed consistently.
@@ -250,7 +257,7 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
     if entry.pageKind == pkRedirect:
       continue ## alias/redirect entries have no static page of their own
     let routePath = entry.canonicalPath
-    let (status, html) = renderRoute(routePath, contentDir, manifest, cfg, host = host)
+    let (status, html) = renderRoute(routePath, contentDir, manifest, cfg, host = host, strictRenderErrors = true)
     pages.add (routePath, html)
     usedClasses.incl extractUsedClasses(html)
     info "ssg_page_rendered", route = routePath, status = status, bytes = html.len

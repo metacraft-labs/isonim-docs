@@ -38,8 +38,9 @@ type
     title*: string
     body*: string
     sourcePath*: string
+    bodyLine*: int ## First rendered body line, distinct from page-level provenance.
 
-proc parseDocsPage*(raw: string; sourcePath: string = ""): DocsPage =
+proc parseDocsPage*(raw: string; sourcePath: string = ""; firstLine: int = 1): DocsPage =
   ## Pure parsing step -- no filesystem access, so it behaves identically
   ## on `nim c` and `nim js`. `raw` is expected to already be real file
   ## content, whether it arrived via `readFile` at runtime (C target) or
@@ -64,7 +65,7 @@ proc parseDocsPage*(raw: string; sourcePath: string = ""): DocsPage =
 
   let bodyLines = if i < lines.len: lines[i .. ^1] else: @[]
   result = DocsPage(title: title, body: bodyLines.join("\n").strip(),
-                     sourcePath: sourcePath)
+                     sourcePath: sourcePath, bodyLine: firstLine + i)
 
 proc resolveContentDir*(baseDir: string; contentDirName: string = "content"): string =
   ## Resolves the docs content directory path relative to `baseDir`
@@ -245,7 +246,7 @@ proc parseContentEntry*(raw: string; relPath: string): ContentEntry =
   ## both targets with an in-memory `raw` string.
   let (frontRaw, bodyRaw, bodyLine) = splitFrontMatter(raw)
   let front = parseFrontMatter(frontRaw)
-  var page = parseDocsPage(bodyRaw, relPath)
+  var page = parseDocsPage(bodyRaw, relPath, bodyLine)
   if front.title.len > 0:
     page.title = front.title
   let slug = deriveSlug(relPath, front)

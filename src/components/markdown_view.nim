@@ -172,6 +172,12 @@ proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
   ## code, link, image) directly onto `parent`. Used by every block
   ## renderer below instead of duplicating this per block kind.
   for s in spans:
+    if not s.generated.isEmpty:
+      let fragment = r.createElement("span")
+      r.setAttribute(fragment, "class", "docs-md-generated-inline")
+      r.setInnerHtml(fragment, fragmentHtml(s.generated))
+      r.appendChild(parent, fragment)
+      continue
     case s.kind
     of ikText:
       r.appendChild(parent, r.createTextNode(s.text))
@@ -183,7 +189,8 @@ proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
       let linkEl = r.createElement("a")
       r.setAttribute(linkEl, "href", s.href)
       if s.title.len > 0: r.setAttribute(linkEl, "title", s.title)
-      r.appendChild(linkEl, r.createTextNode(s.text))
+      if s.children.len > 0: appendInlineSpans(r, linkEl, s.children)
+      else: r.appendChild(linkEl, r.createTextNode(s.text))
       r.appendChild(parent, linkEl)
     of ikImage:
       ## A CONTENT image renders through `components/image_viewer`: the
@@ -237,7 +244,7 @@ proc renderHeading*[R, E](r: R; blk: Block): E =
   let el = r.createElement("h" & $blk.level)
   r.setAttribute(el, "class", headingClass)
   r.setAttribute(el, "id", blk.headingId)
-  if hasFootnoteReference(blk.headingSpans): appendInlineSpans(r, el, blk.headingSpans)
+  if hasFootnoteReference(blk.headingSpans) or hasGeneratedContent(blk.headingSpans): appendInlineSpans(r, el, blk.headingSpans)
   else: r.appendChild(el, r.createTextNode(blk.headingText))
   el
 
@@ -286,6 +293,11 @@ proc renderCodeFence*[R, E](r: R; blk: Block): E =
   ## second, a structural contract `main_web.wireCodeCopyButton` walks
   ## directly (button -> nextSibling pre -> firstChild code) instead of
   ## an id lookup.
+  if not blk.generated.isEmpty:
+    let generated = r.createElement("div")
+    r.setAttribute(generated, "class", "docs-md-generated")
+    r.setInnerHtml(generated, fragmentHtml(blk.generated))
+    return generated
   let wrapper = r.createElement("div")
   r.setAttribute(wrapper, "class", codeBlockClass)
 
@@ -325,18 +337,20 @@ proc renderTable*[R, E](r: R; blk: Block): E =
   r.setAttribute(el, "class", tableClass)
   let thead = r.createElement("thead")
   let headRow = r.createElement("tr")
-  for h in blk.headers:
+  for n, h in blk.headers:
     let th = r.createElement("th")
-    r.appendChild(th, r.createTextNode(h))
+    if n < blk.headerSpans.len: appendInlineSpans(r, th, blk.headerSpans[n])
+    else: r.appendChild(th, r.createTextNode(h))
     r.appendChild(headRow, th)
   r.appendChild(thead, headRow)
   r.appendChild(el, thead)
   let tbody = r.createElement("tbody")
-  for row in blk.rows:
+  for n, row in blk.rows:
     let rowEl = r.createElement("tr")
-    for cell in row:
+    for c, cell in row:
       let td = r.createElement("td")
-      r.appendChild(td, r.createTextNode(cell))
+      if n < blk.cellSpans.len and c < blk.cellSpans[n].len: appendInlineSpans(r, td, blk.cellSpans[n][c])
+      else: r.appendChild(td, r.createTextNode(cell))
       r.appendChild(rowEl, td)
     r.appendChild(tbody, rowEl)
   r.appendChild(el, tbody)
@@ -674,13 +688,16 @@ proc renderMarkdownBody*[R, E](r: R; blocks: seq[Block];
 
 proc spansHtml*(spans: seq[InlineSpan]): string =
   for s in spans:
+    if not s.generated.isEmpty:
+      result.add "<span class=\"docs-md-generated-inline\">" & fragmentHtml(s.generated) & "</span>"
+      continue
     case s.kind
     of ikText:
       result.add escapeHtml(s.text)
     of ikCode:
       result.add "<code>" & escapeHtml(s.text) & "</code>"
     of ikLink:
-      result.add "<a href=\"" & escapeAttr(s.href) & "\"" & titleAttribute(s.title) & ">" & escapeHtml(s.text) & "</a>"
+      result.add "<a href=\"" & escapeAttr(s.href) & "\"" & titleAttribute(s.title) & ">" & (if s.children.len > 0: spansHtml(s.children) else: escapeHtml(s.text)) & "</a>"
     of ikImage:
       ## SSR counterpart to `appendInlineSpans`' `ikImage` branch -- kept in
       ## lock-step by both calling `components/image_viewer` (see there).
@@ -697,7 +714,7 @@ proc spansHtml*(spans: seq[InlineSpan]): string =
 proc renderHeadingHtml*(blk: Block): string =
   let tag = "h" & $blk.level
   "<" & tag & " class=\"" & headingClass & "\" id=\"" & escapeAttr(blk.headingId) & "\">" &
-    (if hasFootnoteReference(blk.headingSpans): spansHtml(blk.headingSpans)
+    (if hasFootnoteReference(blk.headingSpans) or hasGeneratedContent(blk.headingSpans): spansHtml(blk.headingSpans)
      else: escapeHtml(blk.headingText)) & "</" & tag & ">"
 
 proc renderParagraphHtml*(blk: Block): string =
@@ -728,6 +745,8 @@ proc highlightedCodeHtml*(lang, code: string): string =
         escapeHtml(tok.text) & "</span>"
 
 proc renderCodeFenceHtml*(blk: Block): string =
+  if not blk.generated.isEmpty:
+    return "<div class=\"docs-md-generated\">" & fragmentHtml(blk.generated) & "</div>"
   let langAttr =
     if blk.lang.len > 0: " class=\"language-" & escapeAttr(blk.lang) & "\""
     else: ""
@@ -747,13 +766,13 @@ proc renderAdmonitionHtml*(blk: Block): string =
 
 proc renderTableHtml*(blk: Block): string =
   result = "<table class=\"" & tableClass & "\"><thead><tr>"
-  for h in blk.headers:
-    result.add "<th>" & escapeHtml(h) & "</th>"
+  for n, h in blk.headers:
+    result.add "<th>" & (if n < blk.headerSpans.len: spansHtml(blk.headerSpans[n]) else: escapeHtml(h)) & "</th>"
   result.add "</tr></thead><tbody>"
-  for row in blk.rows:
+  for n, row in blk.rows:
     result.add "<tr>"
-    for cell in row:
-      result.add "<td>" & escapeHtml(cell) & "</td>"
+    for c, cell in row:
+      result.add "<td>" & (if n < blk.cellSpans.len and c < blk.cellSpans[n].len: spansHtml(blk.cellSpans[n][c]) else: escapeHtml(cell)) & "</td>"
     result.add "</tr>"
   result.add "</tbody></table>"
 

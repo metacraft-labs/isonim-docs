@@ -315,6 +315,7 @@ import isonim/web/web_renderer
 import ../../src/main_web
 import ../../src/hydrating_renderer
 import ../../src/core/markdown_vm
+import isonim/content/directives
 import ../../src/components/markdown_view
 
 proc tagOf(n: Node): string =
@@ -458,3 +459,33 @@ suite "docs JS hydration (Tier 3, JS-target, M4 corrective deliverable 1)":
     check sameNode(mounted.firstChild, originalLink)
     check sameNode(mounted.firstChild.nextSibling, originalTitle)
     check sameNode(mounted.firstChild.nextSibling.nextSibling, originalBody)
+
+  test "validated fragments hydrate as opaque subtrees without losing later siblings":
+    let rootEl = document.getElementById("isonim-docs-hydration-fragment-root")
+    let formula = mathFragment("<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mi>x</mi></math>")
+    let diagram = diagramFragment("<svg xmlns=\"http://www.w3.org/2000/svg\"><path fill=\"none\"/></svg>")
+    let renderers = ContentRenderers(
+      math: proc(t: string; d: bool; l: SourceLocation): ContentFragment = formula,
+      diagram: proc(k, t: string; l: SourceLocation): ContentFragment = diagram)
+    let blocks = parseMarkdownDocWithHooks(@[ParseHooks(renderers: renderers)],
+      "$x$ then\n\n```dot\ndigraph { a -> b }\n```\n\nafter").blocks
+    let preRendered = renderMarkdownBody[WebRenderer, Node](WebRenderer(), blocks)
+    discard appendChild(Node(rootEl), preRendered)
+    let paragraph = preRendered.firstChild
+    let inlineWrapper = paragraph.firstChild
+    let diagramWrapper = paragraph.nextSibling
+    let after = diagramWrapper.nextSibling
+    let expected = renderMarkdownBodyHtml(blocks)
+    check "<span class=\"docs-md-generated-inline\"><math " in expected
+    check "<div class=\"docs-md-generated\"><svg " in expected
+    let mounted = renderMarkdownBody[HydratingRenderer, Node](newHydratingRenderer(rootEl), blocks)
+    discard appendChild(Node(rootEl), mounted)
+    check childCount(Node(rootEl)) == 1
+    check childCount(mounted) == 3
+    check sameNode(mounted, preRendered)
+    check sameNode(mounted.firstChild.firstChild, inlineWrapper)
+    check sameNode(mounted.firstChild.nextSibling, diagramWrapper)
+    check sameNode(mounted.firstChild.nextSibling.nextSibling, after)
+    check $Element(inlineWrapper).innerHTML == fragmentHtml(formula)
+    check $Element(diagramWrapper).innerHTML == fragmentHtml(diagram)
+    check $after.textContent == "after"

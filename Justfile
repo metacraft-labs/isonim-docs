@@ -16,6 +16,7 @@ docs-test-c:
     nim c -r tests/docs/test_routes_logging.nim
     nim c -r tests/docs/test_content_vm.nim
     nim c -r tests/docs/test_markdown_mock.nim
+    nim c -r --out:build/test_content_extensions tests/docs/test_content_extensions.nim
     nim c -r --out:build/test_prose --nimcache:build/nimcache/test_prose tests/docs/test_prose.nim
     nim c -r tests/docs/test_markdown_tabs.nim
     nim c -r tests/docs/test_content_components.nim
@@ -96,6 +97,7 @@ docs-test-js: tailwind-bootstrap
     nim js -r tests/docs/test_manifest_from_content.nim
     nim js -r tests/docs/test_content_vm.nim
     nim js -r tests/docs/test_markdown_mock.nim
+    nim js -r --out:build/test_content_extensions.js tests/docs/test_content_extensions.nim
     nim js -r --out:build/test_prose.js --nimcache:build/nimcache/test_prose_js tests/docs/test_prose.nim
     nim js -r tests/docs/test_markdown_tabs.nim
     nim js -r tests/docs/test_content_components.nim
@@ -231,3 +233,11 @@ release-gate: docs-test docs-smoke docs-build docs-build-golden-check
 # Runs `nix develop`, so it is not part of the in-shell test recipes.
 test-dev-shell:
     bash tests/test_dev_shell_writes_nothing_elsewhere.sh
+
+# Optional real build-time renderer/loader diagnostics integration.
+test-content-tools:
+    nix develop ../isonim#content-tools --command nim c -r --out:build/test_content_math_references tests/docs/test_content_math_references.nim
+    nix develop ../isonim#content-tools --command nim c -r --out:build/test_content_math_source tests/docs/test_content_math_source.nim
+
+test-content-source-mutation:
+    nix develop ../isonim#content-tools --command python3 tests/test_content_math_source_mutation.py

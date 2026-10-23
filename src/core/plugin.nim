@@ -54,6 +54,7 @@ type
     onRender*: proc(html: string): string {.closure.}
     onBuildComplete*: proc(info: BuildInfo) {.closure.}
     directives*: seq[DirectiveRegistration]
+    renderers*: ContentRenderers ## Optional validated build-time math/diagrams.
 
   PluginHost* = object
     ## The ordered registry. Registration order IS execution order for
@@ -92,7 +93,14 @@ proc parseHooks*(host: PluginHost): seq[ParseHooks] =
   ## the directives.
   for p in host.plugins:
     result.add ParseHooks(name: p.name, preParse: p.preParse,
-                          postParse: p.postParse, directives: p.directives)
+                          postParse: p.postParse, directives: p.directives, renderers: p.renderers)
+
+proc hasContentRenderers*(host: PluginHost): bool =
+  ## Whether this host enables optional math/diagram rendering. Established
+  ## parser-only and lifecycle-only plugins retain their default build policy.
+  for p in host.plugins:
+    if not p.renderers.math.isNil or not p.renderers.diagram.isNil:
+      return true
 
 proc applyPreParse*(host: PluginHost; body: string): string =
   ## Threads a page's raw markdown through every `preParse` in order; each
@@ -142,7 +150,8 @@ proc parseMarkdownDocWithPlugins*(host: PluginHost; body: string;
     sourceRelPath: string = "";
     resolveContentPath: proc(contentRelPath: string): string {.closure.} = nil;
     resolveSymbol: proc(sym: string): string {.closure.} = nil;
-    isComponentKnown: proc(name: string): bool {.closure.} = nil): MarkdownDoc =
+    isComponentKnown: proc(name: string): bool {.closure.} = nil;
+    firstLine: int = 1): MarkdownDoc =
   ## The one entry point the render pipeline uses to parse a page through
   ## the plugin host: `preParse` transforms the raw text, the host's
   ## custom directives are wired into `parseMarkdownDoc` (so a registered
@@ -150,4 +159,4 @@ proc parseMarkdownDocWithPlugins*(host: PluginHost; body: string;
   ## With an empty host this is exactly `parseMarkdownDoc(body, ...)` --
   ## the directive closures are nil and both hook loops are no-ops.
   parseMarkdownDocWithHooks(host.parseHooks, body, sourceRelPath,
-    resolveContentPath, resolveSymbol, isComponentKnown)
+    resolveContentPath, resolveSymbol, isComponentKnown, firstLine)
