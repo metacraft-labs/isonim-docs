@@ -1,11 +1,10 @@
 ## Tier 1 + Tier 2 M3 deliverable 1 suite -- dual-target: both `nim c -r`
 ## and `nim js -r` must pass.
 ##
-## Proves the `:::tabs` / `@tab Title` markdown block: `parseMarkdownBlocks`
-## (`src/core/markdown_vm.nim`) turns it into a `bkTabs` block carrying
-## ordered `TabPanel`s (each panel's own body re-parsed as a full nested
-## block list, exactly like a top-level document -- not just paragraphs),
-## and `markdown_view.renderTabs`/`renderTabsHtml` render a valid ARIA
+## Proves the `:::tabs` / `@tab Title` markdown block renders: the parse
+## into a `bkTabs` block of ordered `TabPanel`s is IsoNim's
+## (`isonim/content/markdown`; its parsing cases moved there with the
+## parser), and `markdown_view.renderTabs`/`renderTabsHtml` render a valid ARIA
 ## `tablist`/`tab`/`tabpanel` structure with a default-active first tab
 ## (roving `tabindex`, `aria-selected`, `hidden` on inactive panels) on
 ## both the MockRenderer/browser tree side and the SSR string side.
@@ -15,43 +14,6 @@ import isonim/testing/mock_dom
 import ../../src/core/markdown_vm
 import ../../src/components/markdown_view
 import ./helpers/mock_tree
-
-suite "docs markdown tabs -- pure parsing (Tier 1, dual-target)":
-  test "parseMarkdownBlocks translates ':::tabs' / '@tab Title' into an ordered bkTabs block":
-    let raw = ":::tabs\n@tab Nim\nSee `echo 1`.\n@tab Bash\necho 1\n:::"
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 1
-    check blocks[0].kind == bkTabs
-    check blocks[0].tabs.len == 2
-    check blocks[0].tabs[0].title == "Nim"
-    check blocks[0].tabs[1].title == "Bash"
-
-  test "parseMarkdownBlocks re-parses each tab panel's body as a full nested block list":
-    let raw = ":::tabs\n@tab Nim\n```nim\nlet x = 1\n```\n@tab JSON\n```json\n{}\n```\n:::"
-    let blocks = parseMarkdownBlocks(raw)
-    let tabs = blocks[0].tabs
-    check tabs[0].blocks.len == 1
-    check tabs[0].blocks[0].kind == bkCodeFence
-    check tabs[0].blocks[0].lang == "nim"
-    check tabs[1].blocks[0].lang == "json"
-
-  test "parseMarkdownBlocks preserves panel order exactly as authored":
-    let raw = ":::tabs\n@tab First\nOne.\n@tab Second\nTwo.\n@tab Third\nThree.\n:::"
-    let tabs = parseMarkdownBlocks(raw)[0].tabs
-    check tabs.len == 3
-    check tabs[0].title == "First"
-    check tabs[1].title == "Second"
-    check tabs[2].title == "Third"
-    check spansText(tabs[0].blocks[0].spans) == "One."
-    check spansText(tabs[2].blocks[0].spans) == "Three."
-
-  test "parseMarkdownBlocks parses tabs alongside other blocks in document order":
-    let raw = "# Title\n\n:::tabs\n@tab A\nBody A.\n:::\n\nAfter."
-    let blocks = parseMarkdownBlocks(raw)
-    check blocks.len == 3
-    check blocks[0].kind == bkHeading
-    check blocks[1].kind == bkTabs
-    check blocks[2].kind == bkParagraph
 
 suite "docs markdown tabs rendering -- MockRenderer (Tier 2, dual-target)":
   test "renderMarkdownBody: a tabs block renders a tablist with one tab button per panel":

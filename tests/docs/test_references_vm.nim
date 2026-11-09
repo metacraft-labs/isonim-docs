@@ -149,3 +149,34 @@ suite "docs references -- formatReferenceIssue (Tier 1, dual-target)":
     let msg = formatReferenceIssue(issue)
     check msg.contains("guide/dsl.md:12")
     check msg.contains("/guide/missing")
+
+suite "prose references match rendered content":
+  test "links in quotes strikes captions and endnotes are validated":
+    let doc = parseMarkdownDoc("> ~~[quote](quote.md)~~\n\n![alt](plot.png)\n*[caption](caption.md)[^note]*\n\n[^note]: [note](note.md)", "guide/page.md")
+    let issues = checkPageReferences(doc, ContentSource(path: "guide/page.md", line: 1),
+      "/guide/page", initHashSet[string](), initTable[string, HashSet[string]]())
+    var targets: seq[string]
+    for issue in issues:
+      check issue.kind == riUnknownRoute
+      targets.add issue.targetHref
+    check targets == @["/guide/quote", "/guide/caption", "/guide/note"]
+
+  test "legacy literal headings create no invisible reference errors":
+    let doc = parseMarkdownDoc("## [text](missing.md)\n\n## ![alt](missing.png)\n\n## [[sym:Missing]]")
+    let issues = checkPageReferences(doc, ContentSource(path: "page.md", line: 1),
+      "/page", initHashSet[string](), initTable[string, HashSet[string]]())
+    check issues.len == 0
+    var seen: seq[InlineSpan]
+    visitInlineSpans(doc.blocks, proc(span: InlineSpan) = seen.add span)
+    # The generic semantic renderer still sees all three authored references.
+    check seen.len == 3
+    check seen[0].kind == ikLink
+    check seen[1].kind == ikImage
+    check seen[2].kind == ikSymRef
+
+  test "a heading rendered inline for its footnote validates its actual links":
+    let doc = parseMarkdownDoc("## [text](missing.md)[^note]\n\n[^note]: detail")
+    let issues = checkPageReferences(doc, ContentSource(path: "page.md", line: 1),
+      "/page", initHashSet[string](), initTable[string, HashSet[string]]())
+    check issues.len == 1
+    check issues[0].targetHref == "/missing"

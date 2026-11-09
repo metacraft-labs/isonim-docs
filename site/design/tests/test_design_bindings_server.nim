@@ -31,7 +31,7 @@ import isonim/core/signals
 import isonim/editor
 import ../dtcg_workspace           # metacraftEditorWorkspace, docsBindingsEndpoint/Global
 import ../serve                    # writeBindingsSidecar, injectBindingsGlobal
-import ../../src/theme_tokens      # docsDesignSystemPath, designSystemTokens, isonimDocsTokenLayer
+import ../../src/theme_tokens      # docsDesignSystemPath, designSystemTokens, metacraftDocsTokenLayer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -126,7 +126,7 @@ suite "VBIND-M7 docs: building the workspace loads an existing sidecar":
     let dtcgBefore = readFile(docsDesignSystemPath)
     # Build the REAL docs workspace, then load a sidecar the way design/main.nim
     # does (from the server-injected global) before mounting.
-    var ws = metacraftEditorWorkspace(isonimDocsTokenLayer(), designSystemTokens())
+    var ws = metacraftEditorWorkspace(metacraftDocsTokenLayer(), designSystemTokens())
     # Pick a real --docs-* variable that exists in the docs foundations so the
     # rehydrated binding resolves to vbsBound.
     var realVar = ""
@@ -154,7 +154,7 @@ suite "VBIND-M7 docs: building the workspace loads an existing sidecar":
 
   test "a malformed sidecar rehydrates to empty (no crash), DTCG untouched":
     let dtcgBefore = readFile(docsDesignSystemPath)
-    var ws = metacraftEditorWorkspace(isonimDocsTokenLayer(), designSystemTokens())
+    var ws = metacraftEditorWorkspace(metacraftDocsTokenLayer(), designSystemTokens())
     ws.loadBindingSidecar("{ not valid json")
     check ws.variableBindings.len == 0
     let vm = createEditorVM(ws)

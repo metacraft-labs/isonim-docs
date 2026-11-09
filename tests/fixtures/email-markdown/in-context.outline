@@ -1,0 +1,5 @@
+p t(During the window:)
+ul
+  li t(deploys are **queued**, not lost;)
+  li t(the API answers reads as usual.)
+p t(Nothing to do on your side.)

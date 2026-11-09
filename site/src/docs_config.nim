@@ -7,8 +7,10 @@
 ## header renders the plain `.docs-title` text -- no CodeTracer mark is
 ## shipped). `stylesheetHref` is kept unchanged so the SSG hash/purge
 ## pipeline (and its non-dangling guarantee) is untouched; the look is
-## delivered by the reused token layer (`theme_tokens.isonimDocsTokenLayer`)
-## + `assets/style.css`, not by pointing at a different stylesheet.
+## delivered by the shared design system's token layer
+## (`metacraft_docs_theme.metacraftDocsTokenLayer`, re-exported by
+## `theme_tokens`) + the framework's bundled `assets/style.css`, not by
+## pointing at a different stylesheet.
 
 import core/config
 

@@ -33,7 +33,7 @@
 
 import std/[json, strutils, os]
 
-import core/tokens
+import isonim/theming/dtcg
 import core/docs_tokens  # loadDocsTokenLayer (docs-tokens writeback validation)
 import isonim/editor  # FoundationTokenEntry, SourceEditPlan (plan bridge)
 

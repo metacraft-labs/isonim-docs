@@ -106,7 +106,7 @@ proc imageExpandLabel*(alt: string): string =
 
 # --- markup: MockRenderer / browser tree mode -----------------------------
 
-proc appendImageFigure*[R, E](r: R; parent: E; src, alt: string) =
+proc appendImageFigure*[R, E](r: R; parent: E; src, alt: string; title = "") =
   ## Appends one content image (wrapper + `<img>` + affordance) onto
   ## `parent`. Kept in lock-step, element for element and attribute for
   ## attribute, with `renderImageFigureHtml` below -- the two backends
@@ -120,6 +120,7 @@ proc appendImageFigure*[R, E](r: R; parent: E; src, alt: string) =
   r.setAttribute(imgEl, "class", imageClass)
   r.setAttribute(imgEl, "src", src)
   r.setAttribute(imgEl, "alt", alt)
+  if title.len > 0: r.setAttribute(imgEl, "title", title)
   r.appendChild(wrap, imgEl)
 
   ## `target="_blank"` is what makes the no-JS route sane (the full-size
@@ -139,13 +140,14 @@ proc appendImageFigure*[R, E](r: R; parent: E; src, alt: string) =
 
 # --- markup: SSR string mode ----------------------------------------------
 
-proc renderImageFigureHtml*(src, alt: string): string =
+proc renderImageFigureHtml*(src, alt: string; title = ""): string =
   ## SSR counterpart to `appendImageFigure`. Every author-supplied value
   ## (`src`, `alt`) is attribute-escaped, so a hostile alt/src can break
   ## out of neither the attribute nor the element.
   "<span class=\"" & imageFigureClass & "\">" &
     "<img class=\"" & imageClass & "\" src=\"" & escapeAttr(src) &
-      "\" alt=\"" & escapeAttr(alt) & "\" />" &
+      "\" alt=\"" & escapeAttr(alt) & "\"" &
+      (if title.len > 0: " title=\"" & escapeAttr(title) & "\"" else: "") & " />" &
     "<a class=\"" & imageExpandClass & "\" href=\"" & escapeAttr(src) &
       "\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"" &
       escapeAttr(imageExpandLabel(alt)) & "\">" & escapeHtml(imageExpandGlyph) & "</a>" &

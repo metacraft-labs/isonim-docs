@@ -236,7 +236,7 @@ proc contrastItem(vm: EditorVM; key: string): TokenManagerItem =
   TokenManagerItem()
 
 let ts = metacraftTokens()
-let layer = isonimDocsTokenLayer()
+let layer = metacraftDocsTokenLayer()
 
 suite "Metacraft workspace: live editor mount + preview (M1)":
 

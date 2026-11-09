@@ -133,6 +133,13 @@ proc setTextContent*(r: HydratingRenderer; node: Element; text: string) =
 proc setTextContent*(r: HydratingRenderer; node: Node; text: string) =
   r.web.setTextContent(node, text)
 
+proc setInnerHtml*(r: HydratingRenderer; node: Element; html: string) =
+  ## A trusted fragment owns its complete child subtree. Preserve already
+  ## matching SSR markup, and do not reuse its snapshot for subsequent child
+  ## construction after an opaque replacement.
+  if $node.innerHTML != html: r.web.setInnerHtml(node, html)
+  r.state.stack[^1] = HydrationFrame()
+
 proc addEventListener*(r: HydratingRenderer; node: Element; event: string;
                         handler: proc()) =
   r.web.addEventListener(node, event, handler)

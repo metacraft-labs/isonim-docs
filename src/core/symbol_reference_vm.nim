@@ -19,7 +19,7 @@
 
 import std/tables
 import ./nimdoc
-import ./anchors
+import isonim/content/anchors
 
 type
   SymbolNavEntry* = object

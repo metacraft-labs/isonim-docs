@@ -23,7 +23,7 @@
 ## touches `std/os`, so both compile on `nim c` and `nim js`.
 
 import std/tables
-import ../core/markdown_vm
+import isonim/content/markdown
 
 type
   ComponentInstance* = object

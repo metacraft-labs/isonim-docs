@@ -1,0 +1,27 @@
+h2#before-you-upgrade t(Before you upgrade)
+ol
+  li t(Back up the database)
+ul
+  li t(with )c(acme backup)t(, or)
+  li t(from the dashboard:)
+ol
+  li t(open **Settings**)
+  li t(choose *Backups*)
+  li t(Read the )a(release notes|https://example.com/notes|false)
+  li t(Upgrade)
+ul
+  li t(**Tight** items hold their text directly.)
+  li t(A nested list sits under its item.)
+p t(Loose items keep their paragraphs:)
+ul
+  li t(The first item's paragraph.)
+ul
+  li t(and its sub-list, after a blank line.)
+ul
+  li t(The second item.)
+table Plan|Seats|Price
+  tr t(*Hobby*) | t(1) | t(Free)
+  tr t(Team) | c(5) | t(**$20.00**)
+table Date|Item|Qty|Amount
+  tr t(1 Oct) | a(Widget|https://example.com/w|false) | t(2) | t($20.00)
+  tr t(2 Oct) | t(Gadget) | t(1) | t($5.00)

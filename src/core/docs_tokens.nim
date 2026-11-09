@@ -21,7 +21,7 @@
 ## dark block. Pure string work; identical on the C and JS targets.
 
 import std/[json, strutils]
-import ./tokens
+import isonim/theming/dtcg
 
 type
   BindingKind* = enum

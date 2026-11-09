@@ -4,6 +4,17 @@
 ## architecture rules in AGENTS.md, works identically under `nim c` and
 ## `nim js`.
 
+import isonim/static/csp
+import isonim/static/scripts
+import isonim/static/urls
+
+# Moved to `isonim/static` (the CSP types and constructors, the site-URL
+# join and the script policy), re-exported so every existing import of
+# this module keeps compiling and seeing the same types.
+export CspDirective, CspConfig, defaultCspConfig, strictCspConfig
+export ScriptPolicy
+export joinSiteUrl
+
 type
   SearchMode* = enum
     ## M12 deliverable 2: which path the search box's queries take. The
@@ -29,24 +40,6 @@ type
     mode*: SearchMode
     endpoint*: string
     debounceMs*: int
-
-  CspDirective* = object
-    ## One Content-Security-Policy directive (M12 deliverable 3): a name
-    ## (`default-src`, `script-src`, ...) and its ordered source list. Plain
-    ## data so a consumer composes a policy without the framework knowing
-    ## any site's origins; `core/csp.nim` folds per-page inline-script hashes
-    ## into `script-src` at emit time.
-    name*: string
-    sources*: seq[string]
-
-  CspConfig* = object
-    ## A consumer's CSP (M12 deliverable 3). `enabled` is the master switch;
-    ## the framework default (`defaultCspConfig`) is OFF, so a site that
-    ## configures nothing keeps its exact prior head. `directives` are the
-    ## base directives -- the per-page `'sha256-...'` hash-sources are added
-    ## to `script-src` at render time (`core/csp.nim`), never stored here.
-    enabled*: bool
-    directives*: seq[CspDirective]
 
   AnalyticsProvider* = enum
     ## Which analytics adapter a site uses (M12 deliverable 3). `apNone`
@@ -204,6 +197,17 @@ type
                      ## keeps the pre-M1 behaviour: only the active route's
                      ## ancestor sections auto-expand, so on a section-less home
                      ## page every named section is collapsed.
+    scriptPolicy*: ScriptPolicy
+                     ## Which scripts a page carries (`isonim/static/scripts`).
+                     ## `spDeclared` (the zero value, so every existing config
+                     ## keeps it) emits the framework's scripts as before: the
+                     ## theme no-flash bootstrap, the configured analytics
+                     ## snippet, the app bundle when `appScriptHref` is set, and
+                     ## the image viewer. `spNone` (opt-in) emits no executable
+                     ## script except a configured analytics snippet: no theme
+                     ## bootstrap (the stylesheet then has to follow
+                     ## `prefers-color-scheme` on its own), no image viewer, no
+                     ## app bundle. The JSON-LD block is data and stays either way.
 
 const
   defaultSearchEndpoint* = "/api/search"
@@ -229,27 +233,6 @@ proc defaultServerSearchConfig*(): ServerSearchConfig =
   ## having to restate them.
   ServerSearchConfig(mode: smClientIndex, endpoint: defaultSearchEndpoint,
     debounceMs: defaultSearchDebounceMs)
-
-proc defaultCspConfig*(): CspConfig =
-  ## The framework default: CSP disabled. Emits no meta/header, so every
-  ## pre-M12 page is byte-for-byte unchanged unless a consumer opts in.
-  CspConfig(enabled: false, directives: @[])
-
-proc strictCspConfig*(): CspConfig =
-  ## A ready-made strict starting point a consumer can adopt or extend: no
-  ## `'unsafe-inline'` on scripts (inline scripts ride in via their per-page
-  ## hashes -- `core/csp.nim`), everything else same-origin. Content-
-  ## agnostic: it names no host, only `'self'`. `object-src 'none'` +
-  ## `base-uri 'self'` close the usual injection escape hatches.
-  CspConfig(enabled: true, directives: @[
-    CspDirective(name: "default-src", sources: @["'self'"]),
-    CspDirective(name: "script-src", sources: @["'self'"]),
-    CspDirective(name: "style-src", sources: @["'self'", "'unsafe-inline'"]),
-    CspDirective(name: "img-src", sources: @["'self'", "data:"]),
-    CspDirective(name: "connect-src", sources: @["'self'"]),
-    CspDirective(name: "object-src", sources: @["'none'"]),
-    CspDirective(name: "base-uri", sources: @["'self'"]),
-  ])
 
 proc defaultAnalyticsConfig*(): AnalyticsConfig =
   ## The framework's content-agnostic default: analytics OFF (`apNone`),
@@ -288,22 +271,6 @@ proc chromeOf*(cfg: DocsConfig): DocsChrome =
     showLastUpdated: cfg.showLastUpdated,
     needHelp: cfg.needHelp,
   )
-
-proc joinSiteUrl*(baseUrl, routePath: string): string =
-  ## Joins a consumer-supplied `baseUrl` with a normalized route path into
-  ## the absolute URL SEO tags and the sitemap cite. Pure string work (no
-  ## `std/os`/`uri`), so it is identical on the C and JS targets. With no
-  ## `baseUrl` configured it returns the root-relative path unchanged --
-  ## the framework never invents a host it wasn't given.
-  var p = routePath
-  if p.len == 0: p = "/"
-  if p[0] != '/': p = "/" & p
-  if baseUrl.len == 0:
-    return p
-  var b = baseUrl
-  while b.len > 1 and b[^1] == '/':
-    b = b[0 ..< b.len - 1]
-  b & p
 
 proc docsConfig*(): DocsConfig =
   ## The framework's own content-agnostic default `DocsConfig` -- carries

@@ -23,7 +23,7 @@
 import std/[tables, sets, strutils]
 import ./content
 import ./routes
-import ./markdown_vm
+import isonim/content/markdown
 
 type
   ReferenceIssueKind* = enum
@@ -95,62 +95,21 @@ proc isPageHref(routePart: string): bool =
   '.' notin lastSeg
 
 proc linkSpans(blocks: seq[Block]): seq[InlineSpan] =
-  ## Every `ikLink` inline span reachable from a page's parsed block
-  ## list -- paragraphs, list items, and admonition body paragraphs are
-  ## the only block kinds `markdown_vm` gives inline spans to directly;
-  ## `bkTabs` panels recurse (each panel's own `blocks` is a full nested
-  ## block list, so a link inside a tab panel is just as reachable as one
-  ## at the top level). `ikImage` spans are asset references, not page
-  ## links, so they're never collected here.
-  for blk in blocks:
-    case blk.kind
-    of bkParagraph:
-      for s in blk.spans:
-        if s.kind == ikLink: result.add s
-    of bkList:
-      for item in blk.items:
-        for s in item:
-          if s.kind == ikLink: result.add s
-    of bkAdmonition:
-      for para in blk.bodyParagraphs:
-        for s in para:
-          if s.kind == ikLink: result.add s
-    of bkTabs:
-      for panel in blk.tabs:
-        result.add linkSpans(panel.blocks)
-    of bkHeading, bkCodeFence, bkTable, bkComponent,
-       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo, bkForm:
-      ## M2 content components carry their hrefs as plain-string card/button
-      ## targets rather than `ikLink` inline spans, so they're out of scope
-      ## for inline-link reference checking (like `bkComponent`).
-      discard
+  ## The shared traversal includes nested quotes, captions and endnotes.
+  var found: seq[InlineSpan]
+  let collect = proc(span: InlineSpan) =
+    if span.kind == ikLink: found.add span
+  visitInlineSpans(blocks, collect,
+    proc(heading: Block): bool = hasFootnoteReference(heading.headingSpans) or hasGeneratedContent(heading.headingSpans))
+  found
 
 proc symRefSpans(blocks: seq[Block]): seq[InlineSpan] =
-  ## Every `ikSymRef` inline span (`[[sym:...]]`, M8 deliverable 2)
-  ## reachable from a page's parsed block list -- the same block kinds
-  ## `linkSpans` reaches, recursing into `bkTabs` panels identically.
-  for blk in blocks:
-    case blk.kind
-    of bkParagraph:
-      for s in blk.spans:
-        if s.kind == ikSymRef: result.add s
-    of bkList:
-      for item in blk.items:
-        for s in item:
-          if s.kind == ikSymRef: result.add s
-    of bkAdmonition:
-      for para in blk.bodyParagraphs:
-        for s in para:
-          if s.kind == ikSymRef: result.add s
-    of bkTabs:
-      for panel in blk.tabs:
-        result.add symRefSpans(panel.blocks)
-    of bkHeading, bkCodeFence, bkTable, bkComponent,
-       bkCardGrid, bkHero, bkButton, bkFaq, bkVideo, bkForm:
-      ## M2 content components carry their hrefs as plain-string card/button
-      ## targets rather than `ikLink` inline spans, so they're out of scope
-      ## for inline-link reference checking (like `bkComponent`).
-      discard
+  var found: seq[InlineSpan]
+  let collect = proc(span: InlineSpan) =
+    if span.kind == ikSymRef: found.add span
+  visitInlineSpans(blocks, collect,
+    proc(heading: Block): bool = hasFootnoteReference(heading.headingSpans) or hasGeneratedContent(heading.headingSpans))
+  found
 
 proc checkPageReferences*(doc: MarkdownDoc; source: ContentSource; ownRoutePath: string;
                            knownRoutes: HashSet[string];
@@ -311,6 +270,7 @@ proc makeContentPathResolver*(manifest: RouteManifest): proc(contentRelPath: str
       deriveRoutePath(section, slug)
 
 when not defined(js):
+  import ./plugin
   import ./openapi
   import ./api_reference_vm
   import ./nimdoc
@@ -346,7 +306,8 @@ when not defined(js):
 
   proc checkContentGraph*(contentDir: string; manifest: RouteManifest;
                            includeDrafts: bool = false;
-                           aliases: Table[string, string] = initTable[string, string]()):
+                           aliases: Table[string, string] = initTable[string, string]();
+                           host: PluginHost = PluginHost()):
       seq[ReferenceIssue] =
     ## Loads every real content file under `contentDir` (never a mocked
     ## filesystem, per the M0 harness rule) and checks the *whole* graph's
@@ -358,10 +319,21 @@ when not defined(js):
     ## links' destinations against) -- `findDuplicateRoutePaths` still
     ## covers it, since a route collision is a property of the content
     ## files themselves, independent of manifest wiring.
+    ## Pass the same explicit host as `renderRoute`: Markdown/tutorial source,
+    ## references and target anchors use its complete parser configuration.
+    ## An empty host preserves default parsing and requires no external tools.
     let contentPathToRoute = contentPathToRouteMap(manifest)
     let resolveContentPath = makeContentPathResolver(manifest)
+    let symbolIndex = buildSymbolIndex(contentDir, manifest)
+    let resolveSymbol = proc(q: string): string = symbolIndex.getOrDefault(q, "")
 
-    let entries = loadContentEntries(contentDir, includeDrafts)
+    # An explicit manifest can select drafts even when ordinary discovery does
+    # not. Those rendered pages must contribute references and target anchors.
+    # Unbound drafts remain excluded unless the caller requests them explicitly.
+    var entries: seq[ContentEntry]
+    for entry in loadContentEntries(contentDir, includeDrafts = true):
+      if includeDrafts or not entry.front.draft or contentPathToRoute.hasKey(entry.source.path):
+        entries.add entry
     result.add findDuplicateRoutePaths(entries)
 
     var allAliases = buildAliasMap(entries, contentPathToRoute) ## M3 deliverable 3: every
@@ -377,7 +349,15 @@ when not defined(js):
     for entry in entries:
       if not contentPathToRoute.hasKey(entry.source.path): continue
       let route = contentPathToRoute[entry.source.path]
-      let doc = parseMarkdownDoc(entry.page.body, entry.source.path, resolveContentPath)
+      # SSR only applies parser hooks to Markdown and tutorial routes. Keep
+      # other page kinds on their existing path, even with a configured host.
+      let pageHost = if matchRoute(manifest, route).entry.pageKind in {pkMarkdown, pkTutorial}:
+        host
+      else:
+        PluginHost()
+      let doc = parseMarkdownDocWithPlugins(pageHost, entry.page.body,
+        entry.source.path, resolveContentPath, resolveSymbol,
+        firstLine = entry.page.bodyLine)
       bound.add (route, entry.source, doc)
 
     var knownRoutes = initHashSet[string]()
@@ -426,22 +406,22 @@ when not defined(js):
         except CatchableError:
           discard
 
-    let symbolIndex = buildSymbolIndex(contentDir, manifest)
-
     for b in bound:
       result.add checkPageReferences(b.doc, b.source, b.route, knownRoutes,
                                       anchorsByRoute, allAliases, symbolIndex)
 
   proc validateContentGraph*(contentDir: string; manifest: RouteManifest;
                               includeDrafts: bool = false;
-                              aliases: Table[string, string] = initTable[string, string]()) =
+                              aliases: Table[string, string] = initTable[string, string]();
+                              host: PluginHost = PluginHost()) =
     ## The enforcing form `checkContentGraph`'s query form feeds: raises a
     ## typed `BrokenReferenceError` (never a silent return) the instant
     ## the content graph carries any broken reference, so a caller that
     ## simply calls this and doesn't catch it gets exactly the "fail the
     ## build" behavior M3 deliverable 2 requires. `../check_links.nim` is
     ## the CI-facing entry point that does exactly that.
-    let issues = checkContentGraph(contentDir, manifest, includeDrafts, aliases)
+    ## `host` must match the rendering configuration; no tools are inferred.
+    let issues = checkContentGraph(contentDir, manifest, includeDrafts, aliases, host)
     if issues.len > 0:
       var msg = "broken internal references found:\n"
       for issue in issues:

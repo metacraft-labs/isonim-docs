@@ -41,11 +41,40 @@
         };
         preCommit = git-hooks.lib.${system}.run {
           src = ./.;
-          hooks = import "${inputs.standard-hook-source}/git-hooks/standard-hooks.nix" {
-            inherit pkgs;
-            lib = pkgs.lib;
-            src = inputs.standard-hook-source;
-          };
+          hooks =
+            let
+              # Byte-exact files no rewriting or whitespace hook may touch:
+              # tests/golden/ holds build output (the goldens the release
+              # gate compares fresh builds against), tests/fixtures/
+              # content-site/ is the Markdown one of them is built from, and
+              # tests/fixtures/email-markdown/ holds Markdown sources and
+              # their expected parse outlines, compared byte for byte by
+              # tests/test_markdown_ast_compat.nim (prettier would reformat
+              # the Markdown it is testing). The shared set takes
+              # editorconfig-checker's exclusions as an option; the two
+              # rewriting hooks take theirs through the native per-hook
+              # field.
+              byteExactExcludes = [
+                "^tests/golden/"
+                "^tests/fixtures/email-markdown/"
+                "^tests/fixtures/content-site/"
+              ];
+              standard = import "${inputs.standard-hook-source}/git-hooks/standard-hooks.nix" {
+                inherit pkgs;
+                lib = pkgs.lib;
+                src = inputs.standard-hook-source;
+                editorconfigExcludes = byteExactExcludes;
+              };
+            in
+            standard
+            // {
+              end-of-file-fixer = standard.end-of-file-fixer // {
+                excludes = byteExactExcludes;
+              };
+              prettier = standard.prettier // {
+                excludes = byteExactExcludes;
+              };
+            };
         };
         expectedNativeHook =
           pkgs.runCommand "docs-native-pre-commit-hook"
