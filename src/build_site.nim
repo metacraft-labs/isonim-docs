@@ -50,7 +50,10 @@ proc compileClientBundle(outDir, clientEntry: string) =
   ## a broken client entry is a real build failure, never silently shipped.
   createDir(outDir / "assets")
   let appJs = outDir / "assets" / "app.js"
-  let cmd = "nim js --hints:off -o:" & quoteShell(appJs) & " " & quoteShell(clientEntry)
+  let skipParent =
+    if fileExists(clientEntry.parentDir / "config.nims"): "--skipParentCfg "
+    else: ""
+  let cmd = "nim js " & skipParent & "--hints:off -o:" & quoteShell(appJs) & " " & quoteShell(clientEntry)
   info "ssg_client_bundle_compiling", entry = clientEntry, output = appJs
   let code = execShellCmd(cmd)
   doAssert code == 0,
