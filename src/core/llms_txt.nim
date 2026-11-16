@@ -52,13 +52,27 @@ proc canonicalMarkdownUrl*(baseUrl, routePath: string): string =
   let mdRel = "/" & markdownRelPath(routePath)
   if root.len == 0: mdRel else: root & mdRel
 
+proc stripGeneratedCommentLines(md: string): string =
+  ## Strips standalone `<!-- generated:... -->` region markers outside code
+  ## fences so raw `.md` mirrors and `llms-full.txt` stay clean for agents.
+  var outLines: seq[string] = @[]
+  var inFence = false
+  for line in md.splitLines():
+    let s = line.strip()
+    if s.startsWith("```") or s.startsWith("~~~"):
+      inFence = not inFence
+    if not inFence and s.startsWith("<!-- generated:") and s.endsWith("-->"):
+      continue
+    outLines.add line
+  outLines.join("\n").strip()
+
 proc renderPageMarkdown*(contentDir: string; entry: RouteEntry): string =
   ## Returns the clean, front-matter-stripped Markdown body for `entry` so an
   ## agent fetching `<route>.md` receives only topic content.
   if entry.meta.contentPath.len == 0:
     return ""
   let ce = loadContentEntry(contentDir, entry.meta.contentPath)
-  let body = ce.page.body.strip()
+  let body = stripGeneratedCommentLines(ce.page.body)
   let title = if ce.front.title.len > 0: ce.front.title
               elif entry.meta.title.len > 0: entry.meta.title
               else: ""
@@ -153,7 +167,7 @@ proc renderLlmsFullTxt*(cfg: DocsConfig; contentDir: string; manifest: RouteMani
     if ce.front.description.len > 0:
       lines.add "Description: " & ce.front.description
     lines.add ""
-    lines.add ce.page.body.strip()
+    lines.add stripGeneratedCommentLines(ce.page.body)
     lines.add ""
 
   lines.join("\n")
@@ -164,7 +178,7 @@ proc renderLlmsHeaders*(basePath: string): string =
   ## text / Markdown content types.
   let base = normalizeBasePath(basePath)
   "/*\n" &
-  "  Link: <" & base & "/llms.txt>; rel=\"describedby\"; type=\"text/markdown\", <" &
+  "  Link: <" & base & "/llms.txt>; rel=\"describedby\"; type=\"text/plain\", <" &
     base & "/llms.txt>; rel=\"llms-txt\", <" &
     base & "/llms-full.txt>; rel=\"llms-full-txt\"\n\n" &
   base & "/llms.txt\n" &

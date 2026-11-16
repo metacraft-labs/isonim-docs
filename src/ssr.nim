@@ -174,7 +174,7 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
     let mdHref = "/" & markdownRelPath(entry.canonicalPath)
     let altLinks =
       "<link rel=\"alternate\" type=\"text/markdown\" href=\"" & mdHref & "\">" &
-      "<link rel=\"describedby\" type=\"text/markdown\" href=\"/llms.txt\">"
+      "<link rel=\"describedby\" type=\"text/plain\" href=\"/llms.txt\">"
     headRegion = headRegion.replace("</head>", altLinks & "</head>")
 
   proc siteNavigation(): NavigationViewModel =
