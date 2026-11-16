@@ -42,15 +42,22 @@ suite "DocsConfig.emitLlmsTxt (SSG + DevServer, opt-in)":
     check "https://docs.example.test/index.md" in llms
     check "https://docs.example.test/llms-full.txt" in llms
     check fileExists(outDir / "index.md")
+    check fileExists(outDir / "index.html.md")
+    check fileExists(outDir / "getting-started.md")
+    check fileExists(outDir / "getting-started/index.html.md")
     check readFile(outDir / "index.md").startsWith("# ")
+    let homeHtml = readFile(outDir / "index.html")
+    check "<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">" in homeHtml
+    check "<link rel=\"describedby\" type=\"text/markdown\" href=\"/llms.txt\">" in homeHtml
 
     let llmsFull = readFile(outDir / "llms-full.txt")
     check "# Example Docs" in llmsFull
     check "URL: https://docs.example.test/" in llmsFull
 
     let headers = readFile(outDir / "_headers")
-    check "Link: </llms.txt>; rel=\"llms-txt\", </llms-full.txt>; rel=\"llms-full-txt\"" in headers
+    check "Link: </llms.txt>; rel=\"describedby\"; type=\"text/markdown\", </llms.txt>; rel=\"llms-txt\", </llms-full.txt>; rel=\"llms-full-txt\"" in headers
     check "Content-Type: text/plain; charset=utf-8" in headers
+    check "Content-Type: text/markdown; charset=utf-8" in headers
 
     let robots = readFile(outDir / "robots.txt")
     check "https://docs.example.test/llms.txt" in robots

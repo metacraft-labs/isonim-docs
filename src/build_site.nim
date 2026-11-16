@@ -195,11 +195,12 @@ proc writeAgentDiscoveryFiles(outDir, contentDir: string;
   for entry in manifest.entries:
     if entry.pageKind == pkRedirect or entry.status != rsOk or entry.meta.contentPath.len == 0:
       continue
-    let mdPath = outDir / markdownRelPath(entry.canonicalPath)
-    if not fileExists(mdPath):
-      createDir(mdPath.parentDir)
-      let mdBody = renderPageMarkdown(contentDir, entry)
-      writeFile(mdPath, mdBody)
+    let mdBody = renderPageMarkdown(contentDir, entry)
+    for relPath in markdownMirrorRelPaths(entry.canonicalPath):
+      let mdPath = outDir / relPath
+      if not fileExists(mdPath):
+        createDir(mdPath.parentDir)
+        writeFile(mdPath, mdBody)
   let llmsPath = outDir / "llms.txt"
   if not fileExists(llmsPath):
     let body = renderLlmsTxt(cfg, manifest)

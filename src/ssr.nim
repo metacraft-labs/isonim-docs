@@ -10,13 +10,14 @@
 when defined(js):
   {.error: "ssr.nim is a C-target (server-side) entry point; use main_web.nim for the JS target".}
 
-import std/[os, tables]
+import std/[os, strutils, tables]
 import chronicles
 import isonim/ssr/renderer
 import ./core/content
 import ./core/config
 import ./core/routes
 import ./core/shell_vm
+import ./core/llms_txt
 import isonim/content/markdown
 import ./core/navigation_vm
 import ./core/references
@@ -168,7 +169,13 @@ proc renderRoute*(path: string; contentDir: string = "tests/fixtures/mini-site";
   ## analytics when configured), hashed into the CSP `script-src`. On the
   ## framework default the theme bootstrap is the head's `headTop` (inside
   ## `<head>`, after the charset meta) -- never emitted before `<head>`.
-  let headRegion = renderSecureDocumentHeadHtml(head, cfg)
+  var headRegion = renderSecureDocumentHeadHtml(head, cfg)
+  if cfg.emitLlmsTxt and entry.status == rsOk and entry.meta.contentPath.len > 0:
+    let mdHref = "/" & markdownRelPath(entry.canonicalPath)
+    let altLinks =
+      "<link rel=\"alternate\" type=\"text/markdown\" href=\"" & mdHref & "\">" &
+      "<link rel=\"describedby\" type=\"text/markdown\" href=\"/llms.txt\">"
+    headRegion = headRegion.replace("</head>", altLinks & "</head>")
 
   proc siteNavigation(): NavigationViewModel =
     ## M6 deliverable 2: EVERY page kind -- including the typed 404 and a

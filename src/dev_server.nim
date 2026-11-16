@@ -436,7 +436,7 @@ proc handleRoute*(server: DevServer; path: string):
       for entry in manifest.entries:
         if entry.pageKind == pkRedirect or entry.status != rsOk or entry.meta.contentPath.len == 0:
           continue
-        if markdownRelPath(entry.canonicalPath) == wantRel:
+        if wantRel in markdownMirrorRelPaths(entry.canonicalPath):
           return (200, "text/markdown; charset=utf-8",
                   renderPageMarkdown(server.contentDir, entry))
   if path.startsWith("/assets/"):

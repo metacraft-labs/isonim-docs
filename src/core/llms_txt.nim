@@ -31,17 +31,21 @@ proc canonicalPageUrl*(baseUrl, routePath: string): string =
   else:
     root & routePath
 
-proc markdownRelPath*(routePath: string): string =
-  ## Relative output path for a route's raw Markdown mirror (`/` -> `index.md`,
-  ## `/guides/install` -> `guides/install.md`), matching the `llmstxt.org`
-  ## topic-file convention so agents fetch clean Markdown without HTML chrome.
+proc markdownMirrorRelPaths*(routePath: string): seq[string] =
+  ## Relative output paths for a route's raw Markdown mirrors (`llmstxt.org` v2):
+  ## `/guides/install` emits `guides/install.md`, `guides/install/index.md`, and
+  ## `guides/install/index.html.md` so agents appending `.md` to clean or slash
+  ## URLs always resolve 200 OK without HTML chrome.
   let clean = routePath.strip(chars = {'/'})
   if clean.len == 0:
-    "index.md"
+    @["index.md", "index.html.md"]
   elif clean.endsWith(".md"):
-    clean
+    @[clean]
   else:
-    clean & ".md"
+    @[clean & ".md", clean & "/index.md", clean & "/index.html.md"]
+
+proc markdownRelPath*(routePath: string): string =
+  markdownMirrorRelPaths(routePath)[0]
 
 proc canonicalMarkdownUrl*(baseUrl, routePath: string): string =
   let root = baseUrl.strip(leading = false, trailing = true, chars = {'/'})
@@ -155,11 +159,13 @@ proc renderLlmsFullTxt*(cfg: DocsConfig; contentDir: string; manifest: RouteMani
   lines.join("\n")
 
 proc renderLlmsHeaders*(basePath: string): string =
-  ## Renders static-host `_headers` advertising `rel="llms-txt"` and UTF-8 plain
+  ## Renders static-host `_headers` advertising standard `rel="describedby"`
+  ## (`llmstxt.org` v2 / RFC 8288) alongside `rel="llms-txt"` and UTF-8 plain
   ## text / Markdown content types.
   let base = normalizeBasePath(basePath)
   "/*\n" &
-  "  Link: <" & base & "/llms.txt>; rel=\"llms-txt\", <" &
+  "  Link: <" & base & "/llms.txt>; rel=\"describedby\"; type=\"text/markdown\", <" &
+    base & "/llms.txt>; rel=\"llms-txt\", <" &
     base & "/llms-full.txt>; rel=\"llms-full-txt\"\n\n" &
   base & "/llms.txt\n" &
   "  Content-Type: text/plain; charset=utf-8\n\n" &
