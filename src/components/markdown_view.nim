@@ -165,73 +165,248 @@ proc admonitionLabel*(kind: AdmonitionKind): string =
 proc admonitionKindClass*(kind: AdmonitionKind): string =
   admonitionBaseClass & "-" & admonitionLabel(kind).toLowerAscii()
 
+# --- Shared inline emphasis grouping (`**strong**`, `*em*`, `***both***`) ---
+#
+# `isonim/content/markdown` keeps `*` and `_` inside unescaped `ikText` spans
+# (`s.escaped == false`) so `isonim-email`'s AST outline stays stable while
+# escaped `\*` carries `s.escaped == true`. Grouping emphasis here gives both
+# `appendInlineSpans` (MockRenderer / browser DOM) and `spansHtml` (SSR)
+# identical `<strong>` and `<em>` trees, including emphasis spanning inline
+# `<code>` or `<a>` nodes (`**the `repro.nim` [guide](/g)**`).
+
+type
+  EmTokenKind = enum
+    etSpan
+    etText
+    etDelim
+
+  EmToken = object
+    kind: EmTokenKind
+    span: InlineSpan
+    text: string
+    delimChar: char
+    count: int
+    canOpen: bool
+    canClose: bool
+
+  RichInlineKind = enum
+    rikSpan
+    rikText
+    rikStrong
+    rikEm
+
+  RichInline = ref object
+    kind: RichInlineKind
+    span: InlineSpan
+    text: string
+    children: seq[RichInline]
+
+proc hasEmphasisCandidate(spans: seq[InlineSpan]): bool =
+  for s in spans:
+    if s.kind == ikText and not s.escaped and s.generated.isEmpty:
+      if '*' in s.text or '_' in s.text:
+        return true
+  false
+
+proc tokenizeForEmphasis(spans: seq[InlineSpan]): seq[EmToken] =
+  for idx, s in spans:
+    if s.kind != ikText or s.escaped or not s.generated.isEmpty:
+      result.add EmToken(kind: etSpan, span: s)
+      continue
+    let txt = s.text
+    var i = 0
+    var plainStart = 0
+    while i < txt.len:
+      let ch = txt[i]
+      if ch in {'*', '_'}:
+        if i > plainStart:
+          result.add EmToken(kind: etText, text: txt[plainStart ..< i])
+        var j = i
+        while j < txt.len and txt[j] == ch: inc j
+        let prevCh =
+          if i > 0: txt[i - 1]
+          elif idx > 0:
+            let ps = spans[idx - 1]
+            if ps.kind == ikText and ps.text.len > 0: ps.text[^1]
+            else: 'a'
+          else: ' '
+        let nextCh =
+          if j < txt.len: txt[j]
+          elif idx + 1 < spans.len:
+            let ns = spans[idx + 1]
+            if ns.kind == ikText and ns.text.len > 0: ns.text[0]
+            else: 'a'
+          else: ' '
+        let leftFlank = nextCh notin Whitespace
+        let rightFlank = prevCh notin Whitespace
+        let canOpen =
+          if ch == '_': leftFlank and prevCh notin (Letters + Digits)
+          else: leftFlank
+        let canClose =
+          if ch == '_': rightFlank and nextCh notin (Letters + Digits)
+          else: rightFlank
+        result.add EmToken(kind: etDelim, delimChar: ch, count: j - i,
+                           canOpen: canOpen, canClose: canClose)
+        i = j
+        plainStart = i
+      else:
+        inc i
+    if plainStart < txt.len:
+      result.add EmToken(kind: etText, text: txt[plainStart .. ^1])
+
+proc parseRichInlineTokens(tokens: seq[EmToken]): seq[RichInline] =
+  var i = 0
+  while i < tokens.len:
+    let tok = tokens[i]
+    case tok.kind
+    of etSpan:
+      result.add RichInline(kind: rikSpan, span: tok.span)
+      inc i
+    of etText:
+      result.add RichInline(kind: rikText, text: tok.text)
+      inc i
+    of etDelim:
+      if not tok.canOpen or tok.count <= 0:
+        result.add RichInline(kind: rikText, text: repeat(tok.delimChar, tok.count))
+        inc i
+        continue
+      var matched = false
+      for width in [2, 1]:
+        if tok.count < width: continue
+        var closeIdx = -1
+        for j in (i + 1) ..< tokens.len:
+          if tokens[j].kind == etDelim and tokens[j].delimChar == tok.delimChar and
+              tokens[j].canClose and tokens[j].count >= width:
+            closeIdx = j
+            break
+        if closeIdx > i:
+          var inner: seq[EmToken] = @[]
+          if tok.count > width:
+            var remOpen = tok
+            remOpen.count = tok.count - width
+            inner.add remOpen
+          for k in (i + 1) ..< closeIdx:
+            inner.add tokens[k]
+          let closeTok = tokens[closeIdx]
+          var trailingLeftover = 0
+          if closeTok.count > width:
+            # If an inner opener of the same char exists, give remaining
+            # closers to the inner slice first (handles `**bold and *em***`
+            # and `***both***`).
+            var hasInnerOpener = tok.count > width
+            if not hasInnerOpener:
+              for k in (i + 1) ..< closeIdx:
+                if tokens[k].kind == etDelim and tokens[k].delimChar == tok.delimChar and
+                    tokens[k].canOpen:
+                  hasInnerOpener = true
+                  break
+            if hasInnerOpener:
+              var remClose = closeTok
+              remClose.count = closeTok.count - width
+              inner.add remClose
+            else:
+              trailingLeftover = closeTok.count - width
+          let kind = if width == 2: rikStrong else: rikEm
+          result.add RichInline(kind: kind, children: parseRichInlineTokens(inner))
+          if trailingLeftover > 0:
+            var rest = @[EmToken(kind: etDelim, delimChar: closeTok.delimChar,
+                                 count: trailingLeftover, canOpen: closeTok.canOpen,
+                                 canClose: closeTok.canClose)]
+            if closeIdx + 1 < tokens.len:
+              rest.add tokens[closeIdx + 1 .. ^1]
+            result.add parseRichInlineTokens(rest)
+            return
+          i = closeIdx + 1
+          matched = true
+          break
+      if not matched:
+        result.add RichInline(kind: rikText, text: repeat(tok.delimChar, tok.count))
+        inc i
+
 # --- MockRenderer / browser tree mode -----------------------------------
 
-proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
-  ## Shared inline renderer: appends each inline span (text, inline
-  ## code, link, image) directly onto `parent`. Used by every block
-  ## renderer below instead of duplicating this per block kind.
-  for s in spans:
-    if not s.generated.isEmpty:
-      let fragment = r.createElement("span")
-      r.setAttribute(fragment, "class", "docs-md-generated-inline")
-      r.setInnerHtml(fragment, fragmentHtml(s.generated))
-      r.appendChild(parent, fragment)
-      continue
-    case s.kind
-    of ikText:
-      r.appendChild(parent, r.createTextNode(s.text))
-    of ikCode:
+proc appendSingleSpan[R, E](r: R; parent: E; s: InlineSpan)
+proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan])
+
+proc appendRichInlines[R, E](r: R; parent: E; nodes: seq[RichInline]) =
+  for node in nodes:
+    case node.kind
+    of rikSpan:
+      appendSingleSpan(r, parent, node.span)
+    of rikText:
+      if node.text.len > 0:
+        r.appendChild(parent, r.createTextNode(node.text))
+    of rikStrong:
+      let el = r.createElement("strong")
+      appendRichInlines(r, el, node.children)
+      r.appendChild(parent, el)
+    of rikEm:
+      let el = r.createElement("em")
+      appendRichInlines(r, el, node.children)
+      r.appendChild(parent, el)
+
+proc appendSingleSpan[R, E](r: R; parent: E; s: InlineSpan) =
+  if not s.generated.isEmpty:
+    let fragment = r.createElement("span")
+    r.setAttribute(fragment, "class", "docs-md-generated-inline")
+    r.setInnerHtml(fragment, fragmentHtml(s.generated))
+    r.appendChild(parent, fragment)
+    return
+  case s.kind
+  of ikText:
+    r.appendChild(parent, r.createTextNode(s.text))
+  of ikCode:
+    let codeEl = r.createElement("code")
+    r.appendChild(codeEl, r.createTextNode(s.text))
+    r.appendChild(parent, codeEl)
+  of ikLink:
+    let linkEl = r.createElement("a")
+    r.setAttribute(linkEl, "href", s.href)
+    if s.title.len > 0: r.setAttribute(linkEl, "title", s.title)
+    if s.children.len > 0: appendInlineSpans(r, linkEl, s.children)
+    else: r.appendChild(linkEl, r.createTextNode(s.text))
+    r.appendChild(parent, linkEl)
+  of ikImage:
+    appendImageFigure[R, E](r, parent, s.href, s.text, s.title)
+  of ikSymRef:
+    if s.href.len > 0:
+      let linkEl = r.createElement("a")
+      r.setAttribute(linkEl, "class", symRefClass)
+      r.setAttribute(linkEl, "href", s.href)
       let codeEl = r.createElement("code")
       r.appendChild(codeEl, r.createTextNode(s.text))
-      r.appendChild(parent, codeEl)
-    of ikLink:
-      let linkEl = r.createElement("a")
-      r.setAttribute(linkEl, "href", s.href)
-      if s.title.len > 0: r.setAttribute(linkEl, "title", s.title)
-      if s.children.len > 0: appendInlineSpans(r, linkEl, s.children)
-      else: r.appendChild(linkEl, r.createTextNode(s.text))
+      r.appendChild(linkEl, codeEl)
       r.appendChild(parent, linkEl)
-    of ikImage:
-      ## A CONTENT image renders through `components/image_viewer`: the
-      ## `<img>` plus an affordance to view it full-viewport when it is
-      ## actually being displayed smaller than it is. Chrome images (the
-      ## header logo, a `:::cards` icon) deliberately do NOT go through
-      ## here -- they are sized by the theme, never downscaled content.
-      appendImageFigure[R, E](r, parent, s.href, s.text, s.title)
-    of ikSymRef:
-      ## M8 deliverable 2: a resolved `[[sym:...]]` renders as a link to the
-      ## symbol anchor; an unresolved one renders as inline code (and is
-      ## flagged by the reference checker), never crashing the render.
-      if s.href.len > 0:
-        let linkEl = r.createElement("a")
-        r.setAttribute(linkEl, "class", symRefClass)
-        r.setAttribute(linkEl, "href", s.href)
-        let codeEl = r.createElement("code")
-        r.appendChild(codeEl, r.createTextNode(s.text))
-        r.appendChild(linkEl, codeEl)
-        r.appendChild(parent, linkEl)
-      else:
-        let codeEl = r.createElement("code")
-        r.setAttribute(codeEl, "class", symRefUnknownClass)
-        r.appendChild(codeEl, r.createTextNode(s.text))
-        r.appendChild(parent, codeEl)
-    of ikStrike:
-      let el = r.createElement("del")
-      appendInlineSpans(r, el, s.children)
+    else:
+      let codeEl = r.createElement("code")
+      r.setAttribute(codeEl, "class", symRefUnknownClass)
+      r.appendChild(codeEl, r.createTextNode(s.text))
+      r.appendChild(parent, codeEl)
+  of ikStrike:
+    let el = r.createElement("del")
+    appendInlineSpans(r, el, s.children)
+    r.appendChild(parent, el)
+  of ikFootnoteRef:
+    if s.footnoteNumber == 0:
+      r.appendChild(parent, r.createTextNode("[^" & s.text & "]"))
+    else:
+      let el = r.createElement("sup")
+      r.setAttribute(el, "id", s.referenceId)
+      let link = r.createElement("a")
+      r.setAttribute(link, "href", s.href)
+      r.setAttribute(link, "role", "doc-noteref")
+      r.appendChild(link, r.createTextNode($s.footnoteNumber))
+      r.appendChild(el, link)
       r.appendChild(parent, el)
-    of ikFootnoteRef:
-      if s.footnoteNumber == 0:
-        r.appendChild(parent, r.createTextNode("[^" & s.text & "]"))
-      else:
-        let el = r.createElement("sup")
-        r.setAttribute(el, "id", s.referenceId)
-        let link = r.createElement("a")
-        r.setAttribute(link, "href", s.href)
-        r.setAttribute(link, "role", "doc-noteref")
-        r.appendChild(link, r.createTextNode($s.footnoteNumber))
-        r.appendChild(el, link)
-        r.appendChild(parent, el)
+
+proc appendInlineSpans*[R, E](r: R; parent: E; spans: seq[InlineSpan]) =
+  ## Shared inline renderer: appends each inline span (text, emphasis, inline
+  ## code, link, image) directly onto `parent`.
+  if not hasEmphasisCandidate(spans):
+    for s in spans:
+      appendSingleSpan(r, parent, s)
+  else:
+    appendRichInlines(r, parent, parseRichInlineTokens(tokenizeForEmphasis(spans)))
 
 proc renderHeading*[R, E](r: R; blk: Block): E =
   ## Builds the heading into a local (naturally `Element`-typed, not
@@ -686,30 +861,50 @@ proc renderMarkdownBody*[R, E](r: R; blocks: seq[Block];
 
 # --- SSR string mode ------------------------------------------------------
 
+proc spansHtml*(spans: seq[InlineSpan]): string
+
+proc singleSpanHtml(s: InlineSpan): string =
+  if not s.generated.isEmpty:
+    return "<span class=\"docs-md-generated-inline\">" & fragmentHtml(s.generated) & "</span>"
+  case s.kind
+  of ikText:
+    escapeHtml(s.text)
+  of ikCode:
+    "<code>" & escapeHtml(s.text) & "</code>"
+  of ikLink:
+    "<a href=\"" & escapeAttr(s.href) & "\"" & titleAttribute(s.title) & ">" &
+      (if s.children.len > 0: spansHtml(s.children) else: escapeHtml(s.text)) & "</a>"
+  of ikImage:
+    renderImageFigureHtml(s.href, s.text, s.title)
+  of ikSymRef:
+    if s.href.len > 0:
+      "<a class=\"" & symRefClass & "\" href=\"" & escapeAttr(s.href) &
+        "\"><code>" & escapeHtml(s.text) & "</code></a>"
+    else:
+      "<code class=\"" & symRefUnknownClass & "\">" & escapeHtml(s.text) & "</code>"
+  of ikStrike:
+    "<del>" & spansHtml(s.children) & "</del>"
+  of ikFootnoteRef:
+    proseSpansHtml(@[s])
+
+proc richInlinesHtml(nodes: seq[RichInline]): string =
+  for node in nodes:
+    case node.kind
+    of rikSpan:
+      result.add singleSpanHtml(node.span)
+    of rikText:
+      result.add escapeHtml(node.text)
+    of rikStrong:
+      result.add "<strong>" & richInlinesHtml(node.children) & "</strong>"
+    of rikEm:
+      result.add "<em>" & richInlinesHtml(node.children) & "</em>"
+
 proc spansHtml*(spans: seq[InlineSpan]): string =
-  for s in spans:
-    if not s.generated.isEmpty:
-      result.add "<span class=\"docs-md-generated-inline\">" & fragmentHtml(s.generated) & "</span>"
-      continue
-    case s.kind
-    of ikText:
-      result.add escapeHtml(s.text)
-    of ikCode:
-      result.add "<code>" & escapeHtml(s.text) & "</code>"
-    of ikLink:
-      result.add "<a href=\"" & escapeAttr(s.href) & "\"" & titleAttribute(s.title) & ">" & (if s.children.len > 0: spansHtml(s.children) else: escapeHtml(s.text)) & "</a>"
-    of ikImage:
-      ## SSR counterpart to `appendInlineSpans`' `ikImage` branch -- kept in
-      ## lock-step by both calling `components/image_viewer` (see there).
-      result.add renderImageFigureHtml(s.href, s.text, s.title)
-    of ikSymRef:
-      if s.href.len > 0:
-        result.add "<a class=\"" & symRefClass & "\" href=\"" & escapeAttr(s.href) &
-          "\"><code>" & escapeHtml(s.text) & "</code></a>"
-      else:
-        result.add "<code class=\"" & symRefUnknownClass & "\">" & escapeHtml(s.text) & "</code>"
-    of ikStrike: result.add "<del>" & spansHtml(s.children) & "</del>"
-    of ikFootnoteRef: result.add proseSpansHtml(@[s])
+  if not hasEmphasisCandidate(spans):
+    for s in spans:
+      result.add singleSpanHtml(s)
+  else:
+    result = richInlinesHtml(parseRichInlineTokens(tokenizeForEmphasis(spans)))
 
 proc renderHeadingHtml*(blk: Block): string =
   let tag = "h" & $blk.level

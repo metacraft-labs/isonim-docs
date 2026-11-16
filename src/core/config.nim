@@ -208,6 +208,13 @@ type
                      ## bootstrap (the stylesheet then has to follow
                      ## `prefers-color-scheme` on its own), no image viewer, no
                      ## app bundle. The JSON-LD block is data and stays either way.
+    emitLlmsTxt*: bool
+                     ## OPTIONAL agent-discovery surface (`llmstxt.org`). `false`
+                     ## (the framework default) emits nothing, keeping existing
+                     ## builds byte-identical. `true` emits `/llms.txt` and
+                     ## `/llms-full.txt` (unless consumer-supplied in `publicDir`),
+                     ## `_headers` advertising `rel="llms-txt"`, a pointer in
+                     ## `robots.txt`, and live plain-text routes in `DevServer`.
 
 const
   defaultSearchEndpoint* = "/api/search"

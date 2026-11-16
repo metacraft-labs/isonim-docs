@@ -73,6 +73,8 @@ docs-test-c:
     nim c -r --out:build/tests/test_static_route_compat --nimcache:build/nimcache/test_static_route_compat tests/docs/test_static_route_compat.nim
     nim c -r tests/docs/test_optional_config_hooks_are_noops_when_unset.nim
     nim c -r tests/docs/test_chrome_hooks_noop_when_unset.nim
+    nim c -r tests/docs/test_markdown_emphasis_and_wrapped_lists.nim
+    nim c -r tests/docs/test_llms_txt_generation.nim
     nim c -r tests/tokens/test_token_css_emitter.nim
     nim c -r tests/test_markdown_ast_compat.nim
 
@@ -137,6 +139,8 @@ docs-test-js: tailwind-bootstrap
     nim js -r tests/docs/test_plugin_hooks.nim
     nim js -r tests/docs/test_server_search.nim
     nim js -r tests/docs/test_csp_analytics.nim
+    nim js -r tests/docs/test_markdown_emphasis_and_wrapped_lists.nim
+    nim js -r tests/docs/test_docs_client_static_mount.nim
     nim js -r tests/test_markdown_ast_compat.nim
 
 # Run the full dual-target docs test matrix.

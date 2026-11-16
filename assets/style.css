@@ -256,7 +256,7 @@ a:hover {
 
 @media (max-width: 960px) {
   .docs-frame {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .docs-nav-breadcrumbs,
@@ -778,6 +778,9 @@ h6.docs-md-heading {
   display: flex;
   gap: var(--docs-space-2);
   border-bottom: 1px solid var(--docs-border);
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .docs-md-tab {
@@ -790,6 +793,8 @@ h6.docs-md-heading {
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .docs-md-tab:hover {
@@ -828,6 +833,25 @@ h6.docs-md-heading {
 .docs-md-table th {
   background: var(--docs-bg-raised);
   font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .docs-header {
+    flex-wrap: wrap;
+    row-gap: var(--docs-space-2);
+  }
+
+  .docs-main {
+    padding: var(--docs-space-6) var(--docs-space-4);
+  }
+
+  .docs-md-table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 /* --- not-found / redirect pages ----------------------------------- */

@@ -21,6 +21,7 @@ import ./core/search_vm
 import ./components/search_view
 import ./components/image_viewer
 import ./core/base_path
+import ./core/llms_txt
 import isonim/static/assets
 import isonim/static/exporter
 import isonim/static/sitemap
@@ -176,9 +177,44 @@ proc writeSitemapAndRobots(outDir: string; manifest: RouteManifest; cfg: DocsCon
 
   let robotsPath = outDir / "robots.txt"
   if not fileExists(robotsPath):
-    let robots = renderRobots(sitemapUrlFor(cfg.baseUrl))
+    var robots = renderRobots(sitemapUrlFor(cfg.baseUrl))
+    if cfg.emitLlmsTxt:
+      let root = cfg.baseUrl.strip(leading = false, trailing = true, chars = {'/'})
+      let llmsUrl = if root.len > 0: root & "/llms.txt" else: "/llms.txt"
+      robots.add "# Agent discovery (llmstxt.org): " & llmsUrl & "\n"
     writeFile(robotsPath, robots)
     info "ssg_robots_written", path = robotsPath, bytes = robots.len
+
+proc writeAgentDiscoveryFiles(outDir, contentDir: string;
+                              manifest: RouteManifest; cfg: DocsConfig) =
+  ## Emit default `llms.txt`, `llms-full.txt`, per-route raw `.md` topic files,
+  ## and `_headers` when `cfg.emitLlmsTxt` is enabled, without overwriting files
+  ## a consumer placed in `publicDir`.
+  if not cfg.emitLlmsTxt:
+    return
+  for entry in manifest.entries:
+    if entry.pageKind == pkRedirect or entry.status != rsOk or entry.meta.contentPath.len == 0:
+      continue
+    let mdPath = outDir / markdownRelPath(entry.canonicalPath)
+    if not fileExists(mdPath):
+      createDir(mdPath.parentDir)
+      let mdBody = renderPageMarkdown(contentDir, entry)
+      writeFile(mdPath, mdBody)
+  let llmsPath = outDir / "llms.txt"
+  if not fileExists(llmsPath):
+    let body = renderLlmsTxt(cfg, manifest)
+    writeFile(llmsPath, body)
+    info "ssg_llms_txt_written", path = llmsPath, bytes = body.len
+  let llmsFullPath = outDir / "llms-full.txt"
+  if not fileExists(llmsFullPath):
+    let body = renderLlmsFullTxt(cfg, contentDir, manifest)
+    writeFile(llmsFullPath, body)
+    info "ssg_llms_full_txt_written", path = llmsFullPath, bytes = body.len
+  let headersPath = outDir / "_headers"
+  if not fileExists(headersPath):
+    let headers = renderLlmsHeaders(cfg.basePath)
+    writeFile(headersPath, headers)
+    info "ssg_headers_written", path = headersPath, bytes = headers.len
 
 proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
                  manifest: RouteManifest = buildManifestFromContent(contentDir);
@@ -297,6 +333,7 @@ proc buildSite*(outDir = "public"; contentDir = "tests/fixtures/mini-site";
 
   ## M6 deliverable 1: sitemap.xml (all routes) + a default robots.txt.
   writeSitemapAndRobots(stage, manifest, cfg)
+  writeAgentDiscoveryFiles(stage, contentDir, manifest, cfg)
 
   var sitePages: seq[SitePage] = @[]
   for (routePath, html) in pages:

@@ -31,6 +31,9 @@ when defined(js):
 import std/[os, strutils, tables, algorithm, sha1, base64, httpcore, asynchttpserver, asyncdispatch, asyncnet]
 import chronicles
 import ./core/config
+import ./core/routes
+import ./core/llms_txt
+import ./core/base_path
 import ./ssr
 
 const bundledDefaultStylesheet = staticRead("../assets/style.css")
@@ -413,6 +416,29 @@ proc handleRoute*(server: DevServer; path: string):
   if path == server.liveReloadPath:
     # Non-WS hit on the reload endpoint (e.g. a probe): a plain OK.
     return (200, "text/plain; charset=utf-8", "isonim-docs live-reload endpoint")
+  if server.cfg.emitLlmsTxt:
+    let base = normalizeBasePath(server.cfg.basePath)
+    if path == "/llms.txt" or (base.len > 0 and path == base & "/llms.txt"):
+      let manifest = buildManifestFromContent(server.contentDir)
+      return (200, "text/plain; charset=utf-8", renderLlmsTxt(server.cfg, manifest))
+    if path == "/llms-full.txt" or (base.len > 0 and path == base & "/llms-full.txt"):
+      let manifest = buildManifestFromContent(server.contentDir)
+      return (200, "text/plain; charset=utf-8",
+              renderLlmsFullTxt(server.cfg, server.contentDir, manifest))
+    if path.endsWith(".md"):
+      let stripped =
+        if base.len > 0 and path.startsWith(base & "/"):
+          path[base.len .. ^1]
+        else:
+          path
+      let wantRel = stripped.strip(chars = {'/'})
+      let manifest = buildManifestFromContent(server.contentDir)
+      for entry in manifest.entries:
+        if entry.pageKind == pkRedirect or entry.status != rsOk or entry.meta.contentPath.len == 0:
+          continue
+        if markdownRelPath(entry.canonicalPath) == wantRel:
+          return (200, "text/markdown; charset=utf-8",
+                  renderPageMarkdown(server.contentDir, entry))
   if path.startsWith("/assets/"):
     # Static assets (themed stylesheet, fonts, images) served verbatim; never
     # get the live-reload client injected.
